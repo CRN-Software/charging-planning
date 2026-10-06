@@ -84,7 +84,6 @@ jobs:
     env:
       PG_CONN_STR: ${{ secrets.TF_STATE_PG_CONN_STR }}
       TF_IN_AUTOMATION: 'true'
-      TF_VAR_image_prefix: ${{ env.REGISTRY_PREFIX }}
       TF_VAR_image_tag: ${{ needs.release.outputs.version }}
       TF_VAR_registry_username: ${{ github.actor }}
       TF_VAR_registry_password: ${{ secrets.GITHUB_TOKEN }}
@@ -95,7 +94,7 @@ jobs:
           terraform_version: '1.15.8'
           terraform_wrapper: false
       - run: terraform init -input=false
-      - run: terraform apply -input=false -auto-approve
+      - run: terraform apply -input=false -auto-approve -var "image_prefix=$REGISTRY_PREFIX"
       - name: Smoke test
         run: |
           curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "$(terraform output -raw api_health_url)" \
