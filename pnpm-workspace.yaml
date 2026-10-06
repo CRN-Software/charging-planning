@@ -1,0 +1,21 @@
+packages:
+  - components/api
+  - components/web
+  - libs/*
+
+# Dependencies allowed to run install scripts (pnpm 11+).
+allowBuilds:
+  '@swc/core': true
+  esbuild: true
+  unrs-resolver: true
+
+# Single source of truth for versions shared across packages (pnpm catalogs).
+catalog:
+  typescript: ^5.9.3
+  '@types/node': ^26.3.0
+  vitest: ^4.1.11
+  '@vitest/coverage-v8': ^4.1.11
+  zod: ^4.4.3
+  eslint: ^10.9.1
+  prettier: ^3.9.6
+  tsx: ^4.23.12

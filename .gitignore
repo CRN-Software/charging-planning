@@ -1,0 +1,38 @@
+# deps / build
+node_modules/
+dist/
+.output/
+.nuxt/
+.turbo/
+coverage/
+*.tsbuildinfo
+
+# env & secrets
+.env
+.env.*
+!.env.example
+*.tfvars
+!*.tfvars.example
+*.pem
+*.key
+
+# terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+
+# os / editors
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Pre-monorepo prototype, kept locally for reference only (contains personal data): never commit.
+/prototype/
+/server/
+/tests/
+/knowledge/household.md
+/knowledge/connections.md
+/Dockerfile
+/compose.yaml

@@ -1,0 +1,25 @@
+{
+  "name": "@charging/tooling",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared lint / tsconfig / vitest presets",
+  "exports": {
+    "./eslint": "./eslint/base.js",
+    "./vitest": "./vitest/base.js",
+    "./tsconfig/base.json": "./tsconfig/base.json",
+    "./tsconfig/library.json": "./tsconfig/library.json",
+    "./tsconfig/library.build.json": "./tsconfig/library.build.json",
+    "./tsconfig/nest.json": "./tsconfig/nest.json"
+  },
+  "dependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint-config-prettier": "^10.1.8",
+    "globals": "^17.11.0",
+    "typescript-eslint": "^8.68.0"
+  },
+  "peerDependencies": {
+    "eslint": "catalog:",
+    "vitest": "catalog:"
+  }
+}

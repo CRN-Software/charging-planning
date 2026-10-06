@@ -1,0 +1,11 @@
+node_modules
+dist
+.output
+.nuxt
+.turbo
+coverage
+pnpm-lock.yaml
+infrastructure/terraform
+prototype
+server
+tests

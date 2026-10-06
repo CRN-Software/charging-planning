@@ -1,0 +1,26 @@
+{
+  "name": "charging-planning",
+  "private": true,
+  "packageManager": "pnpm@12.5.1",
+  "engines": {
+    "node": ">=26.0.0",
+    "pnpm": ">=10.0.0"
+  },
+  "scripts": {
+    "dev": "turbo run dev --parallel",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "infra:up": "docker compose -f infrastructure/docker/compose.dev.yaml up -d",
+    "infra:down": "docker compose -f infrastructure/docker/compose.dev.yaml down",
+    "clean": "turbo run clean && rm -rf node_modules"
+  },
+  "devDependencies": {
+    "prettier": "catalog:",
+    "turbo": "^2.10.12",
+    "typescript": "catalog:"
+  }
+}

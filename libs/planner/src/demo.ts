@@ -1,0 +1,148 @@
+import type { EventTemplate, Household, ManualCharge, Settings } from './types.ts';
+
+/** Fictional household used by the demo mode and the tests. */
+export const DEMO_HOUSEHOLD: Household = {
+  people: {
+    paul: { name: 'Paul', adult: true, color: 'var(--p1)' },
+    claire: { name: 'Claire', adult: true, color: 'var(--p2)' },
+    hugo: { name: 'Hugo', color: 'var(--p3)' },
+    lea: { name: 'Léa', color: 'var(--p4)' },
+    tom: { name: 'Tom', color: 'var(--p5)' },
+    external: {
+      name: 'Hors foyer (ami, covoiturage)',
+      adult: true,
+      external: true,
+      color: 'var(--muted)',
+    },
+  },
+  driverPreference: ['claire', 'paul'],
+  modes: {
+    tesla: { label: 'Tesla', vehicle: true },
+    clio: { label: 'Clio', vehicle: true },
+    velo: { label: 'Vélo' },
+    marche: { label: 'Marche' },
+    tiers: { label: 'Véhicule tiers' },
+  },
+  autoModes: ['tesla', 'clio'],
+  trackedMode: 'tesla',
+  externalMode: 'tiers',
+  places: {
+    home: { name: 'Domicile', lat: 50.6, lon: 3.15 },
+    bureau: { name: 'Bureau', lat: 50.604, lon: 3.091, preferMode: 'tesla', charger: 'work' },
+    centre: { name: 'Centre-ville', lat: 50.629, lon: 3.057 },
+    conservatoire: { name: 'Conservatoire', lat: 50.606, lon: 3.388 },
+    musee: { name: 'Musée des sciences', lat: 50.694, lon: 3.175 },
+    fete: { name: 'Fête de quartier', lat: 50.588, lon: 3.162 },
+    piscine: { name: 'Piscine', lat: 50.528, lon: 3.176 },
+    restaurant: { name: 'Restaurant', lat: 50.551, lon: 3.262 },
+    musique: { name: 'École de musique', lat: 50.556, lon: 3.246 },
+    garderie: { name: 'Garderie', lat: 50.598, lon: 3.155, km: 2 },
+    'grands-parents': { name: 'Grands-parents', lat: 50.57, lon: 2.869 },
+    courses: { name: 'Courses', lat: 50.493, lon: 2.958 },
+    lesquin: { name: 'Superchargeur Lesquin', lat: 50.589, lon: 3.111 },
+    englos: { name: 'Superchargeur Englos', lat: 50.627, lon: 2.958 },
+    unknown: { name: 'Lieu à préciser', km: 5, unknown: true },
+  },
+  chargers: {
+    work: {
+      label: 'Borne du bureau',
+      workplace: true,
+      place: 'bureau',
+      kw: 11,
+      price: 0.1,
+      limit: 100,
+      hassle: 0.5,
+      weekdays: [0, 1, 2, 3, 4],
+    },
+    lesquin: {
+      label: 'Superchargeur Lesquin',
+      place: 'lesquin',
+      kw: 150,
+      limit: 90,
+      sessionH: 0.75,
+      hassle: 3,
+      tariffs: [
+        [0, 0.16],
+        [4, 0.21],
+        [9, 0.38],
+        [20, 0.28],
+      ],
+    },
+    englos: {
+      label: 'Superchargeur Englos',
+      place: 'englos',
+      kw: 150,
+      limit: 90,
+      sessionH: 0.75,
+      hassle: 3,
+      tariffs: [
+        [0, 0.22],
+        [9, 0.38],
+        [21, 0.22],
+      ],
+    },
+  },
+  workplace: {
+    who: 'paul',
+    place: 'bureau',
+    start: '8:00',
+    end: '17:00',
+    days: [0, 1, 2, 3, 4],
+    hassle: 2,
+  },
+  escortRules: [
+    {
+      wd: 1,
+      place: 'piscine',
+      driver: 'external',
+      driverName: 'Un ami',
+      note: 'Un ami emmène les enfants à la piscine le mardi.',
+    },
+  ],
+  gapRules: { '2-conservatoire-13:50>17:25': 'stay' },
+  chargeRoutines: [{ wd: 1, place: 'bureau' }],
+  costs: { otherCarEurPerKm: 0.11, energyValueEurPerKwh: 0.2 },
+};
+
+export const DEMO_SETTINGS: Settings = { soc: 45, reserveKm: 11, batteryKwh: 80, whPerKm: 170 };
+
+const ev = (
+  id: string,
+  who: string,
+  wd: number,
+  start: string,
+  end: string,
+  title: string,
+  place: string,
+): EventTemplate => ({ id, who, wd, start, end, title, place });
+
+export const DEMO_EVENTS: readonly EventTemplate[] = [
+  ev('a1', 'paul', 0, '8:00', '17:00', 'Bureau', 'bureau'),
+  ev('a2', 'paul', 1, '8:00', '17:00', 'Bureau', 'bureau'),
+  ev('a3', 'paul', 4, '7:30', '7:45', 'Kiné', 'centre'),
+  ev('n1', 'claire', 1, '19:00', '23:00', 'Soirée', 'centre'),
+  ev('n2', 'claire', 3, '19:00', '23:00', 'Dîner', 'restaurant'),
+  ev('n3', 'claire', 5, '9:30', '11:30', 'Atelier', 'unknown'),
+  ev('n4', 'claire', 5, '14:00', '19:00', 'Fête de quartier', 'fete'),
+  ev('t1', 'hugo', 0, '16:20', '18:10', 'Arts plastiques', 'conservatoire'),
+  ev('t2', 'hugo', 0, '19:15', '20:15', 'Guitare', 'musique'),
+  ev('t3', 'hugo', 1, '12:00', '14:00', 'Piscine', 'piscine'),
+  ev('t4', 'hugo', 2, '13:50', '15:30', 'Chorale', 'conservatoire'),
+  ev('t5', 'hugo', 2, '15:30', '17:30', 'Théâtre', 'conservatoire'),
+  ev('t6', 'hugo', 2, '18:15', '19:55', 'Solfège', 'conservatoire'),
+  ev('t7', 'hugo', 4, '9:30', '12:00', 'Atelier sciences', 'musee'),
+  ev('t8', 'hugo', 4, '16:20', '17:10', 'Batterie', 'conservatoire'),
+  ev('l1', 'lea', 0, '16:20', '17:10', 'Danse', 'conservatoire'),
+  ev('l2', 'lea', 1, '12:00', '14:00', 'Piscine', 'piscine'),
+  ev('l3', 'lea', 2, '13:50', '14:40', 'Danse', 'conservatoire'),
+  ev('l4', 'lea', 2, '14:40', '15:30', 'Violon', 'conservatoire'),
+  ev('l5', 'lea', 2, '16:35', '17:25', 'Solfège', 'conservatoire'),
+  ev('l6', 'lea', 4, '9:30', '12:00', 'Atelier sciences', 'musee'),
+  ev('l7', 'lea', 4, '16:20', '17:10', 'Solfège', 'conservatoire'),
+  ev('l8', 'lea', 5, '8:50', '10:30', 'Théâtre', 'conservatoire'),
+  ev('h1', 'tom', 2, '13:30', '17:30', 'Garderie', 'garderie'),
+  ev('a4', 'paul', 6, '12:00', '15:30', 'Déjeuner chez les grands-parents', 'grands-parents'),
+  { ...ev('m1', 'paul', 6, '15:50', '16:30', 'Courses', 'courses'), manual: true },
+];
+
+export const DEMO_MANUAL_CHARGES: readonly ManualCharge[] = [];
