@@ -76,6 +76,33 @@ export class AccountsRepository {
       .execute();
   }
 
+  async sealedRefreshToken(accountId: string): Promise<Buffer | undefined> {
+    const row = await this.db
+      .selectFrom('google_credential')
+      .select('refresh_token')
+      .where('account_id', '=', accountId)
+      .executeTakeFirst();
+    return row?.refresh_token;
+  }
+
+  async householdOf(accountId: string): Promise<string | undefined> {
+    const row = await this.db
+      .selectFrom('account')
+      .select('household_id')
+      .where('id', '=', accountId)
+      .executeTakeFirst();
+    return row?.household_id;
+  }
+
+  async members(householdId: string): Promise<string[]> {
+    const rows = await this.db
+      .selectFrom('account')
+      .select('id')
+      .where('household_id', '=', householdId)
+      .execute();
+    return rows.map((row) => row.id);
+  }
+
   async find(accountId: string): Promise<AccountView | undefined> {
     const row = await this.db
       .selectFrom('account')

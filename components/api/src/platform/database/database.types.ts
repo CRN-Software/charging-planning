@@ -8,6 +8,26 @@ export interface SchemaMigrationTable {
 export interface HouseholdTable {
   id: Generated<string>;
   name: string;
+  /** Validated by householdSettingsSchema (@charging/contracts). */
+  settings: Generated<unknown>;
+  created_at: Generated<Date>;
+}
+
+export interface GeocodeCacheTable {
+  query: string;
+  lat: number | null;
+  lon: number | null;
+  label: string | null;
+  created_at: Generated<Date>;
+}
+
+export interface RouteCacheTable {
+  from_lat: number;
+  from_lon: number;
+  to_lat: number;
+  to_lon: number;
+  km: number;
+  min: number;
   created_at: Generated<Date>;
 }
 
@@ -43,4 +63,6 @@ export interface Database {
   account: AccountTable;
   google_credential: GoogleCredentialTable;
   session: SessionTable;
+  geocode_cache: GeocodeCacheTable;
+  route_cache: RouteCacheTable;
 }

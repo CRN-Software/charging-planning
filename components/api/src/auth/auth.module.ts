@@ -21,6 +21,6 @@ import { SessionsRepository } from './sessions.repository';
     AuthService,
     SessionGuard,
   ],
-  exports: [SecretBox, AccountsRepository, SessionsRepository, SessionGuard],
+  exports: [SecretBox, AccountsRepository, SessionsRepository, SessionGuard, AuthService],
 })
 export class AuthModule {}

@@ -21,11 +21,19 @@
 
 ## 3. Modèle
 
-- `household` : un foyer ; créé à la première connexion de son fondateur.
+- `household` : un foyer ; créé à la première connexion de son fondateur. `settings` (JSON validé par `householdSettingsSchema`) : adresse et coordonnées du domicile, personnes, agendas Google de chaque personne.
 - `account` : une personne connectée avec Google (`google_sub` unique), membre d'un foyer.
 - `google_credential` : jeton de rafraîchissement Google du compte (accès hors ligne en lecture aux agendas), **chiffré** (AES-256-GCM, `TOKEN_ENCRYPTION_KEY`), et droits accordés.
 - `session` : cookie httpOnly `sid` ; seule l'empreinte SHA-256 du jeton est stockée ; 30 jours.
-- À venir : `calendar_link` (agenda Google associé à une personne du foyer), `vehicle_link` (véhicule Tesla, jetons chiffrés), réglages du foyer.
+- `geocode_cache`, `route_cache` : réponses de Nominatim (adresse → coordonnées) et d'OSRM (trajet routier), partagées par tous les foyers ; une adresse n'est jamais cherchée deux fois.
+- À venir : `vehicle_link` (véhicule Tesla, jetons chiffrés), réglages du foyer (véhicules, bornes, règles, corrections) côté serveur.
+
+### Agendas
+
+- `GET /api/household/calendars` : agendas Google des comptes du foyer. `PUT /api/household` : domicile (géocodé à l'enregistrement) et personnes, chacune avec ses agendas.
+- `GET /api/household/agenda` : événements des 8 prochains jours, lus en direct (jamais stockés), dans le fuseau du foyer (`Europe/Paris`). Ne deviennent des trajets que les événements confirmés, à heure fixe et avec une adresse (pas les événements sur la journée, sans lieu ou en visio). Une adresse à moins de 200 m du domicile est le domicile ; une adresse introuvable est listée à part (`unresolved`) et l'événement ignoré.
+- Nominatim est appelé au plus une fois par seconde (politique d'usage), avec un `User-Agent` identifiant l'application ; si OSRM ne répond pas, le moteur se replie sur la distance à vol d'oiseau × 1,3.
+- Côté web, un foyer configuré (domicile + au moins un agenda) remplace le foyer de démonstration ; les corrections restent dans le navigateur, séparées par foyer, jusqu'à leur passage côté serveur.
 
 ### Connexion Google
 
