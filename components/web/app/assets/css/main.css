@@ -507,7 +507,10 @@ header {
   margin: 0;
 }
 
-button.b {
+button.b,
+a.b {
+  display: inline-block;
+  text-decoration: none;
   font: 600 0.8rem var(--f-body);
   border-radius: 6px;
   padding: 5px 12px;
@@ -517,10 +520,12 @@ button.b {
   cursor: pointer;
   justify-self: start;
 }
-button.b:hover {
+button.b:hover,
+a.b:hover {
   border-color: var(--muted);
 }
-button.b.primary {
+button.b.primary,
+a.b.primary {
   background: var(--charge);
   border-color: var(--charge);
   color: var(--surface);
@@ -1070,4 +1075,30 @@ button.b.danger {
   color: var(--muted);
   text-align: center;
   padding-block: 48px;
+}
+
+.account {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.site-footer {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 0 16px 32px;
+  font-size: 0.8rem;
+}
+.site-footer a,
+.legal a {
+  color: var(--muted);
+}
+.legal {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 32px 16px;
+  line-height: 1.6;
+}
+.legal h2 {
+  margin-top: 28px;
 }

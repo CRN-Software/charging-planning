@@ -16,6 +16,7 @@
     "typecheck": "nuxt typecheck"
   },
   "dependencies": {
+    "@charging/contracts": "workspace:*",
     "@charging/planner": "workspace:*",
     "@fontsource-variable/bricolage-grotesque": "^5.2.5",
     "@fontsource-variable/figtree": "^5.2.5",
