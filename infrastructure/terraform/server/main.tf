@@ -1,4 +1,8 @@
 locals {
+  name          = "charging-planning"
+  database      = "charging_planning"
+  public_url    = "https://${var.subdomain}.crn-tech.fr"
+  shared_server = "postgres" # container and network of the shared Postgres
   images = {
     api = "${var.image_prefix}/api:${var.image_tag}"
     web = "${var.image_prefix}/web:${var.image_tag}"
@@ -9,58 +13,36 @@ locals {
   }
 }
 
-resource "docker_network" "app" {
-  name = "charging-planning"
-}
-
-# ---------- database (application data, private to the docker network) ----------
+# ---------- database on the shared Postgres ----------
 
 resource "random_password" "db" {
   length  = 32
   special = false
 }
 
-resource "docker_volume" "db" {
-  name = "charging-planning-db"
+resource "postgresql_role" "app" {
+  name     = local.database
+  login    = true
+  password = random_password.db.result
 }
 
-resource "docker_image" "postgres" {
-  name         = "postgres:18-alpine"
-  keep_locally = true
+resource "postgresql_database" "app" {
+  name  = local.database
+  owner = postgresql_role.app.name
 }
 
-resource "docker_container" "db" {
-  name    = "charging-planning-db"
-  image   = docker_image.postgres.image_id
-  restart = "unless-stopped"
-
-  env = [
-    "POSTGRES_DB=charging",
-    "POSTGRES_USER=charging",
-    "POSTGRES_PASSWORD=${random_password.db.result}",
-  ]
-
-  networks_advanced {
-    name = docker_network.app.name
-  }
-
-  volumes {
-    volume_name    = docker_volume.db.name
-    container_path = "/var/lib/postgresql"
-  }
-
-  healthcheck {
-    test     = ["CMD", "pg_isready", "-U", "charging", "-d", "charging"]
-    interval = "30s"
-    timeout  = "5s"
-    retries  = 3
-  }
-
-  log_driver = "json-file"
-  log_opts   = local.log_opts
+resource "postgresql_grant" "no_public_connect" {
+  database    = postgresql_database.app.name
+  role        = "public"
+  object_type = "database"
+  privileges  = []
 }
 
-# ---------- application images ----------
+# ---------- containers ----------
+
+resource "docker_network" "app" {
+  name = local.name
+}
 
 data "docker_registry_image" "app" {
   for_each = local.images
@@ -75,24 +57,23 @@ resource "docker_image" "app" {
 }
 
 resource "docker_container" "api" {
-  name    = "charging-planning-api"
-  image   = docker_image.app["api"].image_id
-  restart = "unless-stopped"
+  name          = "${local.name}-api"
+  image         = docker_image.app["api"].image_id
+  restart       = "unless-stopped"
+  security_opts = ["no-new-privileges:true"]
 
   env = [
     "APP_VERSION=${var.image_tag}",
-    "PUBLIC_BASE_URL=${var.public_base_url}",
-    "DATABASE_URL=postgres://charging:${random_password.db.result}@${docker_container.db.name}:5432/charging",
+    "PUBLIC_BASE_URL=${local.public_url}",
+    "DATABASE_URL=postgres://${postgresql_role.app.name}:${random_password.db.result}@${local.shared_server}:5432/${postgresql_database.app.name}",
   ]
 
   networks_advanced {
     name = docker_network.app.name
   }
 
-  ports {
-    internal = 6123
-    external = var.api_host_port
-    ip       = "127.0.0.1"
+  networks_advanced {
+    name = local.shared_server
   }
 
   log_driver = "json-file"
@@ -100,13 +81,14 @@ resource "docker_container" "api" {
 }
 
 resource "docker_container" "web" {
-  name    = "charging-planning-web"
-  image   = docker_image.app["web"].image_id
-  restart = "unless-stopped"
+  name          = "${local.name}-web"
+  image         = docker_image.app["web"].image_id
+  restart       = "unless-stopped"
+  security_opts = ["no-new-privileges:true"]
 
   env = [
     "NUXT_API_INTERNAL_URL=http://${docker_container.api.name}:6123",
-    "NUXT_PUBLIC_BASE_URL=${var.public_base_url}",
+    "NUXT_PUBLIC_BASE_URL=${local.public_url}",
   ]
 
   networks_advanced {
@@ -115,10 +97,27 @@ resource "docker_container" "web" {
 
   ports {
     internal = 5123
-    external = var.web_host_port
+    external = var.host_port
     ip       = "127.0.0.1"
   }
 
   log_driver = "json-file"
   log_opts   = local.log_opts
+}
+
+# ---------- HTTPS site on the host nginx (certificate included); kept as is when it exists ----------
+
+resource "terraform_data" "site" {
+  input = { subdomain = var.subdomain, port = var.host_port }
+
+  provisioner "local-exec" {
+    command = "[ -e /etc/nginx/sites-available/${self.input.subdomain}.crn-tech.fr ] || sudo /etc/nginx/register-service.sh ${self.input.subdomain} ${self.input.port}"
+  }
+
+  provisioner "local-exec" {
+    when    = destroy
+    command = "sudo /etc/nginx/unregister-service.sh ${self.input.subdomain}"
+  }
+
+  depends_on = [docker_container.web]
 }

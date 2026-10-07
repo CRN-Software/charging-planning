@@ -21,7 +21,7 @@ export default defineNuxtConfig({
     '@/assets/css/main.css',
   ],
   runtimeConfig: {
-    // Server-side calls go straight to the API; the browser stays same-origin via the /api proxy.
+    // The API seen from the Nuxt server (SSR calls and the /api relay, server/middleware/api-proxy.ts).
     apiInternalUrl: 'http://localhost:6123',
     public: {
       baseUrl: 'http://localhost:5123',
@@ -29,9 +29,5 @@ export default defineNuxtConfig({
   },
   nitro: {
     preset: 'node-server',
-    // Dev only. In production the reverse proxy serves /api and the app on one origin.
-    devProxy: {
-      '/api': { target: 'http://localhost:6123/api', changeOrigin: true },
-    },
   },
 });
