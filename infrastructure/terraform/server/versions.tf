@@ -6,25 +6,28 @@ terraform {
       source  = "kreuzwerker/docker"
       version = "~> 4.6"
     }
+    postgresql = {
+      source  = "cyrilgdn/postgresql"
+      version = "~> 1.25"
+    }
     random = {
       source  = "hashicorp/random"
       version = "~> 3.6"
     }
   }
 
-  # State lives in the Postgres shared by every Terraform project on the Raspberry Pi
-  # (see baby-phone infrastructure/bootstrap). Connection: PG_CONN_STR env var.
+  # State lives in the home server's shared Postgres; the deployer provides PG_CONN_STR.
   backend "pg" {
     schema_name = "charging_planning"
   }
 }
 
+# Public images: no registry credentials.
 provider "docker" {
   host = var.docker_host
+}
 
-  registry_auth {
-    address  = "ghcr.io"
-    username = var.registry_username
-    password = var.registry_password
-  }
+# Shared Postgres, `terraform` role (CREATEDB, CREATEROLE): PGHOST/PGUSER/PGPASSWORD from the deployer.
+provider "postgresql" {
+  superuser = false
 }

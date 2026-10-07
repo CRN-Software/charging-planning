@@ -70,34 +70,9 @@ jobs:
 
   deploy:
     needs: [release, image]
-    # Self-hosted runner on the Raspberry Pi: only ever reached from main, never from PRs.
-    runs-on: [self-hosted, rpi]
-    environment:
-      name: production
-      url: https://charging-planning.crn-tech.fr/api/health
     permissions:
+      deployments: write
       contents: read
-      packages: read
-    defaults:
-      run:
-        working-directory: infrastructure/terraform/server
-    env:
-      PG_CONN_STR: ${{ secrets.TF_STATE_PG_CONN_STR }}
-      TF_IN_AUTOMATION: 'true'
-      TF_VAR_image_prefix: ${{ env.REGISTRY_PREFIX }}
-      TF_VAR_image_tag: ${{ needs.release.outputs.version }}
-      TF_VAR_registry_username: ${{ github.actor }}
-      TF_VAR_registry_password: ${{ secrets.GITHUB_TOKEN }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: hashicorp/setup-terraform@v4
-        with:
-          terraform_version: '1.15.8'
-          terraform_wrapper: false
-      - run: terraform init -input=false
-      - run: terraform apply -input=false -auto-approve
-      - name: Smoke test
-        run: |
-          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors "$(terraform output -raw api_health_url)" \
-            | grep -F '"version":"${{ needs.release.outputs.version }}"'
-          curl -fsS --retry 10 --retry-delay 3 --retry-all-errors -o /dev/null "$(terraform output -raw web_url)"
+    uses: ./.github/workflows/deploy.yml
+    with:
+      version: ${{ needs.release.outputs.version }}

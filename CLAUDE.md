@@ -14,7 +14,7 @@ Read `knowledge/` first (architecture, déploiement, backlog). Decisions marked 
 - No personal data in the repository: tests and demo use the fictional household of `libs/planner/src/demo.ts`. Never commit real names, addresses, schedules or tokens.
 - No `any`. Functions ≤ 35 lines, files ≤ 500 lines (lint warns).
 - No third-party paid service on the critical path. Never wake the Tesla; read cached vehicle data only.
-- Secrets only through environment variables / GitHub environment secrets.
+- Secrets only through environment variables: external ones encrypted with sops in `infrastructure/secrets/`, generated ones by Terraform. No deployment secret in GitHub.
 - Conventional commits (`feat(web): …`, `fix(planner): …`, `infra: …`, `docs: …`); PRs are squash-merged, the title drives semantic-release.
 
 ## Stack

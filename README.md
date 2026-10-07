@@ -13,7 +13,7 @@ Every guess can be corrected in a calendar view: who drives, which car, wait on 
 | `libs/tooling`    | Shared tsconfig / eslint / vitest presets                       |
 | `components/web`  | Nuxt 4 app                                                      |
 | `components/api`  | NestJS API                                                      |
-| `infrastructure/` | Terraform (Raspberry Pi), nginx, local Docker services          |
+| `infrastructure/` | Terraform (Raspberry Pi), local Docker services                 |
 | `knowledge/`      | Architecture, deployment, backlog (French)                      |
 
 ## Develop
