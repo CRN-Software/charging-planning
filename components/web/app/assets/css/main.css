@@ -1102,3 +1102,40 @@ button.b.danger {
 .legal h2 {
   margin-top: 28px;
 }
+.setup {
+  display: grid;
+  gap: 10px;
+}
+.setup-field {
+  display: grid;
+  gap: 4px;
+  font-size: 0.86rem;
+}
+.setup input[type='text'] {
+  font: inherit;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+  width: 100%;
+}
+.setup-calendars {
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  width: 100%;
+}
+.setup-calendars th {
+  text-align: left;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.72rem;
+  padding: 4px;
+}
+.setup-calendars td {
+  padding: 4px;
+  border-top: 1px solid var(--line);
+}
+.unresolved {
+  font-size: 0.82rem;
+}

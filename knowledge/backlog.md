@@ -6,13 +6,13 @@
 - Interface Nuxt en mode démonstration (foyer fictif).
 - CI/CD, images GHCR, déploiement par le deployer du serveur (Postgres partagé, site HTTPS).
 - Connexion Google (OIDC + `calendar.readonly` hors ligne), sessions en base, foyer créé à la première connexion, page de confidentialité.
+- Agendas réels : domicile, personnes et agendas associés ; événements des 8 jours à venir ; géocodage (Nominatim) et trajets (OSRM) en cache.
 
 ## Étape 2 — multi-foyers
 
-1. Foyers et invitations ; personnes du foyer (adultes, enfants, hors foyer) ; association agenda → personne.
-2. Lecture des agendas Google par compte, géocodage des adresses (cache), itinéraires routiers (cache).
-3. Liaison Tesla (OAuth Fleet API, région EU, clé publique servie sur `/.well-known/appspecific/com.tesla.3p.public-key.pem`), lecture sans réveil : batterie, charge et **position**, comparée au lieu où les agendas placent le véhicule.
-4. Corrections et règles du foyer enregistrées côté serveur (aujourd'hui dans le navigateur).
+1. Invitations : un second adulte rejoint le foyer et y apporte ses agendas.
+2. Liaison Tesla (OAuth Fleet API, région EU, clé publique servie sur `/.well-known/appspecific/com.tesla.3p.public-key.pem`), lecture sans réveil : batterie, charge et **position**, comparée au lieu où les agendas placent le véhicule.
+3. Véhicules, bornes (dont celle du travail), règles et corrections du foyer enregistrées côté serveur (aujourd'hui dans le navigateur).
 
 ## Étape 3
 

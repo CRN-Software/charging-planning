@@ -14,8 +14,18 @@ import {
   type Settings,
   type Tariff,
 } from '@charging/planner';
+import type { Agenda, HouseholdSettings } from '@charging/contracts';
+import { agendaEvents, connectedHousehold, isConfigured } from '~/utils/connected-household';
 
 const STORAGE_KEY = 'charging-planning.v3';
+/** Demo and each household keep their own corrections: their places and people differ. */
+let storageKey = STORAGE_KEY;
+
+/** What the API knows about a signed-in household: never saved in the browser. */
+export interface Remote {
+  settings: HouseholdSettings;
+  agenda: Agenda | null;
+}
 
 export type View = 'calendar' | 'list';
 export type ChargerPatch = Partial<Pick<Charger, 'kw' | 'price' | 'limit'>> & {
@@ -34,6 +44,7 @@ export interface UserState {
   manualCharges: ManualCharge[];
   accepted: string[];
   view: View;
+  remote: Remote | null;
 }
 
 const initialState = (): UserState => ({
@@ -47,18 +58,19 @@ const initialState = (): UserState => ({
   manualCharges: [],
   accepted: [],
   view: 'calendar',
+  remote: null,
 });
 
 function readSaved(): Partial<UserState> {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}') as Partial<UserState>;
+    return JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Partial<UserState>;
   } catch {
     return {};
   }
 }
 
-function mergePlaces(state: UserState): Record<string, Place> {
-  const all = { ...DEMO_HOUSEHOLD.places, ...state.customPlaces };
+function mergePlaces(base: Household, state: UserState): Record<string, Place> {
+  const all = { ...base.places, ...state.customPlaces };
   return Object.fromEntries(
     Object.entries(all).map(([id, p]) => {
       const km = state.placeKm[id];
@@ -67,33 +79,56 @@ function mergePlaces(state: UserState): Record<string, Place> {
   );
 }
 
-const mergeChargers = (state: UserState): Record<string, Charger> =>
+const mergeChargers = (base: Household, state: UserState): Record<string, Charger> =>
   Object.fromEntries(
-    Object.entries(DEMO_HOUSEHOLD.chargers).map(([id, c]) => [id, { ...c, ...state.chargers[id] }]),
+    Object.entries(base.chargers).map(([id, c]) => [id, { ...c, ...state.chargers[id] }]),
   );
+
+const connectedRemote = (state: UserState) => {
+  const settings = state.remote?.settings ?? null;
+  return isConfigured(settings) && state.remote?.agenda
+    ? { settings, agenda: state.remote.agenda }
+    : null;
+};
+
+const baseHousehold = (state: UserState): Household => {
+  const remote = connectedRemote(state);
+  return remote ? connectedHousehold(remote.settings, remote.agenda) : DEMO_HOUSEHOLD;
+};
 
 export const useHouseholdStore = defineStore('household', {
   state: initialState,
   getters: {
-    household: (state): Household => ({
-      ...DEMO_HOUSEHOLD,
-      places: mergePlaces(state),
-      chargers: mergeChargers(state),
-    }),
-    events: (state): EventTemplate[] => [...DEMO_EVENTS, ...state.extraEvents],
+    connected: (state): boolean => connectedRemote(state) !== null,
+    household: (state): Household => {
+      const base = baseHousehold(state);
+      return { ...base, places: mergePlaces(base, state), chargers: mergeChargers(base, state) };
+    },
+    events: (state): EventTemplate[] => {
+      const remote = connectedRemote(state);
+      return [...(remote ? agendaEvents(remote.agenda) : DEMO_EVENTS), ...state.extraEvents];
+    },
   },
   actions: {
     /** Browser only: reload what the user changed and save every later change. */
-    hydrate() {
-      const saved = readSaved();
+    hydrate(householdId?: string) {
+      storageKey = householdId ? `${STORAGE_KEY}.${householdId}` : STORAGE_KEY;
+      const { remote: _ignored, ...saved } = readSaved();
       this.$patch({ ...saved, settings: { ...DEMO_SETTINGS, ...saved.settings } });
       this.$subscribe((_mutation, state) => {
+        const { remote: _remote, ...corrections } = state;
         try {
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+          localStorage.setItem(storageKey, JSON.stringify(corrections));
         } catch {
           /* storage unavailable */
         }
       });
+    },
+    /** The signed-in household's setup and the events of its calendars. */
+    async loadRemote() {
+      const settings = await $fetch<HouseholdSettings>('/api/household');
+      const agenda = isConfigured(settings) ? await $fetch<Agenda>('/api/household/agenda') : null;
+      this.remote = { settings, agenda };
     },
     setSetting(key: keyof Settings, value: number) {
       this.settings = { ...this.settings, [key]: value };

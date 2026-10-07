@@ -4,7 +4,12 @@ import type { Slot, SlotKind } from '~/utils/calendar';
 import { modeLabel } from '~/utils/plan';
 
 const store = useHouseholdStore();
-onMounted(() => store.hydrate());
+const { data: me } = await useMe();
+onMounted(async () => {
+  store.hydrate(me.value?.household.id);
+  if (me.value) await store.loadRemote();
+});
+const unresolved = computed(() => store.remote?.agenda?.unresolved ?? []);
 const { week, plan, baseline, questions, pending } = usePlan();
 const vehicle = computed(() => modeLabel(store.household, store.household.trackedMode));
 
@@ -24,6 +29,13 @@ const onCreate = (kind: SlotKind, slot: Slot) => {
 <template>
   <div class="wrap">
     <AppHeader :label="week?.label ?? ''" :vehicle="vehicle" />
+    <HouseholdSetup v-if="me && !store.connected" :my-name="me.name" @saved="store.loadRemote()" />
+    <p v-if="unresolved.length" class="card unresolved">
+      Adresses introuvables, événements ignorés :
+      <span v-for="u in unresolved" :key="`${u.date}-${u.title}`" class="pill warn"
+        >{{ u.title }} ({{ u.location }})</span
+      >
+    </p>
     <template v-if="week && plan && baseline">
       <StatTiles :plan="plan" :questions-count="questions.length" />
       <div class="overview">
@@ -43,6 +55,11 @@ const onCreate = (kind: SlotKind, slot: Slot) => {
         <TeslaSettings />
         <ChargerSettings />
         <PlaceSettings />
+        <HouseholdSetup
+          v-if="me && store.connected"
+          :my-name="me.name"
+          @saved="store.loadRemote()"
+        />
       </div>
       <TripSheet
         v-if="sheet?.kind === 'trip'"

@@ -111,3 +111,25 @@ export const identityFromIdToken = (
   if (!claims.email_verified) throw new Error('unverified Google e-mail');
   return claims;
 };
+
+const refreshResponseSchema = z.object({ access_token: z.string(), expires_in: z.number() });
+
+/** A short-lived access token from the stored refresh token (offline access). */
+export const refreshAccessToken = async (
+  client: GoogleClient,
+  refreshToken: string,
+): Promise<{ token: string; expiresAt: number }> => {
+  const response = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: client.clientId,
+      client_secret: client.clientSecret,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    }),
+  });
+  if (!response.ok) throw new Error(`Google token refresh failed: HTTP ${response.status}`);
+  const { access_token, expires_in } = refreshResponseSchema.parse(await response.json());
+  return { token: access_token, expiresAt: Date.now() + expires_in * 1000 };
+};
