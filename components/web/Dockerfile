@@ -11,6 +11,7 @@ FROM base AS deps
 COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 COPY libs/tooling/package.json libs/tooling/
 COPY libs/planner/package.json libs/planner/
+COPY libs/contracts/package.json libs/contracts/
 COPY components/web/package.json components/web/
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store pnpm install --frozen-lockfile --ignore-scripts --filter @charging/web...
 

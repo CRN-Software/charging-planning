@@ -1,26 +1,12 @@
 import { Global, Logger, Module } from '@nestjs/common';
 import type { OnApplicationBootstrap, OnApplicationShutdown } from '@nestjs/common';
-import { join } from 'node:path';
-import { Kysely, PostgresDialect } from 'kysely';
-import { Pool, types } from 'pg';
+import { Kysely } from 'kysely';
 import { AppConfig } from '../config/config.module';
+import { createDatabase, MIGRATIONS_DIR } from './database.factory';
 import type { Database } from './database.types';
 import { migrate } from './migrator';
 
 const logger = new Logger('database');
-export const MIGRATIONS_DIR = join(__dirname, '..', '..', '..', 'migrations');
-
-// `date` columns stay ISO strings: a JS Date would shift the day with the process timezone.
-types.setTypeParser(types.builtins.DATE, (value: string) => value);
-
-export const createDatabase = (connectionString: string, max: number): Kysely<Database> => {
-  const pool = new Pool({ connectionString, max });
-  // Idle connections dropped by the server emit 'error'; unhandled, it kills the process.
-  pool.on('error', (error) => {
-    logger.warn(`idle connection error: ${error.message}`);
-  });
-  return new Kysely<Database>({ dialect: new PostgresDialect({ pool }) });
-};
 
 @Global()
 @Module({

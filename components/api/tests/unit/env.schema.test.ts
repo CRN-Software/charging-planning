@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { validateEnv } from '@/platform/config/env.schema';
 import { maskUrl } from '@/platform/logging/pino.options';
 
-const REQUIRED = { PUBLIC_BASE_URL: 'http://localhost:5123', DATABASE_URL: 'postgres://u:p@localhost:5432/db' };
+const REQUIRED = {
+  PUBLIC_BASE_URL: 'http://localhost:5123',
+  DATABASE_URL: 'postgres://u:p@localhost:5432/db',
+  GOOGLE_CLIENT_ID: 'client.apps.googleusercontent.com',
+  GOOGLE_CLIENT_SECRET: 'secret',
+  TOKEN_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+};
 
 describe('environment', () => {
   it('applies defaults on top of the required variables', () => {
@@ -13,8 +19,12 @@ describe('environment', () => {
     expect(() => validateEnv({ ...REQUIRED, DATABASE_URL: 'mysql://localhost/db' })).toThrow();
   });
 
+  it('refuses an encryption key that is not 32 bytes', () => {
+    expect(() => validateEnv({ ...REQUIRED, TOKEN_ENCRYPTION_KEY: Buffer.alloc(16).toString('base64') })).toThrow();
+  });
+
   it('refuses a missing public url', () => {
-    expect(() => validateEnv({ DATABASE_URL: REQUIRED.DATABASE_URL })).toThrow();
+    expect(() => validateEnv({ ...REQUIRED, PUBLIC_BASE_URL: undefined })).toThrow();
   });
 });
 

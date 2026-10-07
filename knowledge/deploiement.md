@@ -35,17 +35,31 @@ Avant chaque déploiement, le deployer fait un dump de `charging_planning` (outp
 
 ## 3. Variables d'environnement
 
-| Variable                | Composant | Rôle                                                  |
-| ----------------------- | --------- | ----------------------------------------------------- |
-| `PORT` (6123)           | api       | Port HTTP                                             |
-| `APP_VERSION`           | api       | Version exposée par `/api/health`                     |
-| `PUBLIC_BASE_URL`       | api       | URL publique (redirections OAuth)                     |
-| `DATABASE_URL`          | api       | Postgres de l'application                             |
-| `LOG_LEVEL`             | api       | Niveau pino                                           |
-| `NUXT_API_INTERNAL_URL` | web       | API vue depuis le serveur Nuxt (SSR et relais `/api`) |
-| `NUXT_PUBLIC_BASE_URL`  | web       | URL publique                                          |
+| Variable                | Composant | Rôle                                                                                         |
+| ----------------------- | --------- | -------------------------------------------------------------------------------------------- |
+| `PORT` (6123)           | api       | Port HTTP                                                                                    |
+| `APP_VERSION`           | api       | Version exposée par `/api/health`                                                            |
+| `PUBLIC_BASE_URL`       | api       | URL publique (redirections OAuth)                                                            |
+| `DATABASE_URL`          | api       | Postgres de l'application                                                                    |
+| `LOG_LEVEL`             | api       | Niveau pino                                                                                  |
+| `GOOGLE_CLIENT_ID`      | api       | Client OAuth Google (sops)                                                                   |
+| `GOOGLE_CLIENT_SECRET`  | api       | Client OAuth Google (sops)                                                                   |
+| `TOKEN_ENCRYPTION_KEY`  | api       | 32 octets base64 : chiffre les jetons Google/Tesla et le cookie OAuth (généré par Terraform) |
+| `NUXT_API_INTERNAL_URL` | web       | API vue depuis le serveur Nuxt (SSR et relais `/api`)                                        |
+| `NUXT_PUBLIC_BASE_URL`  | web       | URL publique                                                                                 |
 
-En développement : `pnpm infra:up` (Postgres local), puis `pnpm dev`.
+En développement : `pnpm infra:up` (Postgres local), puis `pnpm dev`. Les variables vont dans `.env` à la racine (ignoré par git) ; `TOKEN_ENCRYPTION_KEY` : `openssl rand -base64 32`.
+
+## Secrets
+
+Les secrets externes sont dans `infrastructure/secrets/production.sops.yaml` (chiffré pour le Mac d'administration, la clé de secours et le serveur ; règles dans `.sops.yaml`) :
+
+| Clé                                        | Usage                                                                  |
+| ------------------------------------------ | ---------------------------------------------------------------------- |
+| `google_client_id`, `google_client_secret` | client OAuth « Application Web » du projet GCP `crn-charging-planning` |
+| `tesla_client_id`, `tesla_client_secret`   | application Tesla Fleet API                                            |
+
+Édition : `SOPS_AGE_KEY_FILE=~/.config/sops/age/se-identity.txt sops infrastructure/secrets/production.sops.yaml` (Touch ID). Terraform les lit au déploiement (provider `carlpett/sops`) et les injecte dans le conteneur ; rien n'est écrit sur le disque du serveur.
 
 ## 4. Terraform en local
 

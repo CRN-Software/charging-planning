@@ -1,3 +1,4 @@
+import fastifyCookie from '@fastify/cookie';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import type { NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -15,6 +16,7 @@ export const createApp = async (): Promise<NestFastifyApplication> => {
     new FastifyAdapter({ trustProxy: true, requestIdHeader: 'x-request-id' }),
     { bufferLogs: true },
   );
+  await app.register(fastifyCookie);
   app.useLogger(app.get(Logger));
   app.setGlobalPrefix(API_PREFIX);
   app.useGlobalPipes(new ZodValidationPipe());

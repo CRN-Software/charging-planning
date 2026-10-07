@@ -19,13 +19,23 @@
 | `components/web` | Nuxt 4 SSR : calendrier, courbe de batterie, recharges, corrections                                                                                           |
 | `components/api` | NestJS 11 sur Fastify, Kysely + Postgres, migrations SQL brutes                                                                                               |
 
-## 3. Modèle (à venir, étape 2)
+## 3. Modèle
 
-- `household` : réglages du foyer (personnes, véhicules, bornes, règles, corrections).
-- `account` : une personne connectée avec Google ; appartient à un foyer.
-- `calendar_link` : agenda Google d'un compte, associé à une personne du foyer (un parent peut porter l'agenda d'un enfant).
-- `vehicle_link` : véhicule Tesla relié par un membre du foyer (jetons chiffrés).
-- `session` : cookie httpOnly `sid`, comme dans Oserie.
+- `household` : un foyer ; créé à la première connexion de son fondateur.
+- `account` : une personne connectée avec Google (`google_sub` unique), membre d'un foyer.
+- `google_credential` : jeton de rafraîchissement Google du compte (accès hors ligne en lecture aux agendas), **chiffré** (AES-256-GCM, `TOKEN_ENCRYPTION_KEY`), et droits accordés.
+- `session` : cookie httpOnly `sid` ; seule l'empreinte SHA-256 du jeton est stockée ; 30 jours.
+- À venir : `calendar_link` (agenda Google associé à une personne du foyer), `vehicle_link` (véhicule Tesla, jetons chiffrés), réglages du foyer.
+
+### Connexion Google
+
+**DÉCIDÉ** Application OAuth « externe », publiée en production sans vérification (avertissement « application non vérifiée », 100 utilisateurs au plus) : en mode test, Google ferait expirer l'accès aux agendas tous les 7 jours.
+
+1. `GET /api/auth/google` : redirection vers Google (code d'autorisation + PKCE, `state`), droits `openid email profile calendar.readonly`, accès hors ligne ; le vérificateur PKCE et le `state` voyagent dans un cookie chiffré de 10 minutes.
+2. `GET /api/auth/google/callback` : échange du code, contrôle du jeton d'identité (émetteur, audience, expiration, e-mail vérifié), création du compte et de son foyer à la première connexion, stockage chiffré du jeton de rafraîchissement, ouverture de la session. Sans jeton de rafraîchissement connu, nouvelle demande avec l'écran de consentement.
+3. `GET /api/me` (session requise), `POST /api/auth/logout`.
+
+Le web relaie `/api` vers l'API sans suivre les redirections (`server/middleware/api-proxy.ts`) : les redirections OAuth arrivent au navigateur.
 
 ## 4. Flux de planification
 

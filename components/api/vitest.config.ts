@@ -6,6 +6,6 @@ import { withBase } from '@charging/tooling/vitest';
 export default withBase({
   plugins: [tsconfigPaths(), swc.vite({ module: { type: 'nodenext' } })],
   test: {
-    include: ['src/**/*.test.ts', 'tests/unit/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'tests/unit/**/*.test.ts', 'tests/integration/**/*.test.ts'],
   },
 });

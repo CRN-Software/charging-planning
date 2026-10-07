@@ -13,6 +13,18 @@ locals {
   }
 }
 
+# ---------- secrets ----------
+
+# Third-party credentials, encrypted in the repository (the deployer provides SOPS_AGE_KEY).
+data "sops_file" "secrets" {
+  source_file = "${path.module}/../../secrets/production.sops.yaml"
+}
+
+# Seals the Google and Tesla tokens at rest; generated once, never written anywhere else.
+resource "random_bytes" "token_key" {
+  length = 32
+}
+
 # ---------- database on the shared Postgres ----------
 
 resource "random_password" "db" {
@@ -66,6 +78,9 @@ resource "docker_container" "api" {
     "APP_VERSION=${var.image_tag}",
     "PUBLIC_BASE_URL=${local.public_url}",
     "DATABASE_URL=postgres://${postgresql_role.app.name}:${random_password.db.result}@${local.shared_server}:5432/${postgresql_database.app.name}",
+    "GOOGLE_CLIENT_ID=${data.sops_file.secrets.data["google_client_id"]}",
+    "GOOGLE_CLIENT_SECRET=${data.sops_file.secrets.data["google_client_secret"]}",
+    "TOKEN_ENCRYPTION_KEY=${random_bytes.token_key.base64}",
   ]
 
   networks_advanced {
