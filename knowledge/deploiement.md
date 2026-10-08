@@ -35,18 +35,20 @@ Avant chaque déploiement, le deployer fait un dump de `charging_planning` (outp
 
 ## 3. Variables d'environnement
 
-| Variable                | Composant | Rôle                                                                                         |
-| ----------------------- | --------- | -------------------------------------------------------------------------------------------- |
-| `PORT` (6123)           | api       | Port HTTP                                                                                    |
-| `APP_VERSION`           | api       | Version exposée par `/api/health`                                                            |
-| `PUBLIC_BASE_URL`       | api       | URL publique (redirections OAuth)                                                            |
-| `DATABASE_URL`          | api       | Postgres de l'application                                                                    |
-| `LOG_LEVEL`             | api       | Niveau pino                                                                                  |
-| `GOOGLE_CLIENT_ID`      | api       | Client OAuth Google (sops)                                                                   |
-| `GOOGLE_CLIENT_SECRET`  | api       | Client OAuth Google (sops)                                                                   |
-| `TOKEN_ENCRYPTION_KEY`  | api       | 32 octets base64 : chiffre les jetons Google/Tesla et le cookie OAuth (généré par Terraform) |
-| `NUXT_API_INTERNAL_URL` | web       | API vue depuis le serveur Nuxt (SSR et relais `/api`)                                        |
-| `NUXT_PUBLIC_BASE_URL`  | web       | URL publique                                                                                 |
+| Variable                                 | Composant | Rôle                                                                                         |
+| ---------------------------------------- | --------- | -------------------------------------------------------------------------------------------- |
+| `PORT` (6123)                            | api       | Port HTTP                                                                                    |
+| `APP_VERSION`                            | api       | Version exposée par `/api/health`                                                            |
+| `PUBLIC_BASE_URL`                        | api       | URL publique (redirections OAuth)                                                            |
+| `DATABASE_URL`                           | api       | Postgres de l'application                                                                    |
+| `LOG_LEVEL`                              | api       | Niveau pino                                                                                  |
+| `GOOGLE_CLIENT_ID`                       | api       | Client OAuth Google (sops)                                                                   |
+| `GOOGLE_CLIENT_SECRET`                   | api       | Client OAuth Google (sops)                                                                   |
+| `TESLA_CLIENT_ID`, `TESLA_CLIENT_SECRET` | api       | Application Tesla Fleet API (sops) ; absente, la batterie se saisit à la main                |
+| `TESLA_AUDIENCE`                         | api       | API Fleet régionale (défaut : Europe)                                                        |
+| `TOKEN_ENCRYPTION_KEY`                   | api       | 32 octets base64 : chiffre les jetons Google/Tesla et le cookie OAuth (généré par Terraform) |
+| `NUXT_API_INTERNAL_URL`                  | web       | API vue depuis le serveur Nuxt (SSR et relais `/api`)                                        |
+| `NUXT_PUBLIC_BASE_URL`                   | web       | URL publique                                                                                 |
 
 En développement : `pnpm infra:up` (Postgres local), puis `pnpm dev`. Les variables vont dans `.env` à la racine (ignoré par git) ; `TOKEN_ENCRYPTION_KEY` : `openssl rand -base64 32`.
 
@@ -54,10 +56,15 @@ En développement : `pnpm infra:up` (Postgres local), puis `pnpm dev`. Les varia
 
 Les secrets externes sont dans `infrastructure/secrets/production.sops.yaml` (chiffré pour le Mac d'administration, la clé de secours et le serveur ; règles dans `.sops.yaml`) :
 
-| Clé                                        | Usage                                                                  |
-| ------------------------------------------ | ---------------------------------------------------------------------- |
-| `google_client_id`, `google_client_secret` | client OAuth « Application Web » du projet GCP `crn-charging-planning` |
-| `tesla_client_id`, `tesla_client_secret`   | application Tesla Fleet API                                            |
+| Clé                                        | Usage                                                                                                                                                                                                       |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `google_client_id`, `google_client_secret` | client OAuth « Application Web » du projet GCP `crn-charging-planning`                                                                                                                                      |
+| `tesla_client_id`, `tesla_client_secret`   | application Tesla Fleet API                                                                                                                                                                                 |
+| `tesla_private_key`                        | clé EC (prime256v1) de l'application ; sa moitié publique est servie sur `/.well-known/appspecific/com.tesla.3p.public-key.pem` (`components/api/src/tesla/public-key.ts`) ; réservée aux futures commandes |
+
+### Application Tesla
+
+Dans le portail développeur Tesla : origine autorisée `https://charging-planning.crn-tech.fr`, redirections `https://charging-planning.crn-tech.fr/api/tesla/callback` et `http://localhost:5123/api/tesla/callback`, scopes _Vehicle Information_ et _Vehicle Location_. Une fois la clé publique en ligne, enregistrer le domaine une fois pour la région : `scripts/tesla-register.sh` (Touch ID).
 
 Édition : `SOPS_AGE_KEY_FILE=~/.config/sops/age/se-identity.txt sops infrastructure/secrets/production.sops.yaml` (Touch ID). Terraform les lit au déploiement (provider `carlpett/sops`) et les injecte dans le conteneur ; rien n'est écrit sur le disque du serveur.
 

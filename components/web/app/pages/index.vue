@@ -61,7 +61,7 @@ const onCreate = (kind: SlotKind, slot: Slot) => {
       />
       <div class="config">
         <QuestionList :questions="questions" :days="week.days" />
-        <BatterySettings />
+        <BatterySettings :plan="plan" :days="week.days" />
         <EquipmentSettings />
         <HouseholdSetup :my-name="me.name" @saved="store.loadRemote()" />
       </div>

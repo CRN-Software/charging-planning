@@ -8,12 +8,13 @@
 - Connexion Google (OIDC + `calendar.readonly` hors ligne), sessions en base, foyer créé à la première connexion, page de confidentialité.
 - Agendas réels : domicile, personnes (conducteur ou non), agendas reliés à une ou plusieurs personnes ; une occurrence par événement ; géocodage (BAN, Nominatim) et matrice de trajets (OSRM) en cache.
 - Moteur en machine d'état de ressources : tournées de dépose, attente sur place, ramassages groupés.
+- Liaison Tesla en lecture seule, sans réveil : batterie, limite et position comparée au planning.
 - Véhicules, bornes (dont celle du travail, rattachée au lieu d'agenda voisin), réserve, et semaine corrigée (batterie relevée, conducteurs, attentes, ajouts) enregistrés côté serveur et partagés par le foyer.
 
 ## Étape 2 — multi-foyers
 
 1. Invitations : un second adulte rejoint le foyer et y apporte ses agendas.
-2. Liaison Tesla (OAuth Fleet API, région EU, clé publique servie sur `/.well-known/appspecific/com.tesla.3p.public-key.pem`), lecture sans réveil : batterie, charge et **position**, comparée au lieu où les agendas placent le véhicule.
+2. Fleet Telemetry (flux sans interrogation) si l'interrogation à la demande coûte trop ; pilotage de la limite de charge (scope `vehicle_charging_cmds`, clé privée déjà prête).
 3. Règles d'accompagnement récurrentes et routines de recharge configurables (aujourd'hui vides pour un foyer connecté).
 
 ## Étape 3

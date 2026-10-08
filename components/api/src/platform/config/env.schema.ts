@@ -11,6 +11,10 @@ export const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'log', 'debug', 'verbose']).default('log'),
   GOOGLE_CLIENT_ID: z.string().min(1),
   GOOGLE_CLIENT_SECRET: z.string().min(1),
+  /** Tesla Fleet API (optional: without it, the battery is read by hand). */
+  TESLA_CLIENT_ID: z.string().min(1).optional(),
+  TESLA_CLIENT_SECRET: z.string().min(1).optional(),
+  TESLA_AUDIENCE: z.url().default('https://fleet-api.prd.eu.vn.cloud.tesla.com'),
   /** 32 random bytes, base64: seals third-party tokens at rest and the OAuth cookie. */
   TOKEN_ENCRYPTION_KEY: z
     .base64()
