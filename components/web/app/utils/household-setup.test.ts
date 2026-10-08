@@ -1,3 +1,4 @@
+import { DEFAULT_EQUIPMENT } from '@charging/contracts';
 import { describe, expect, it } from 'vitest';
 import { addPerson, calendarRows, initialPeople, slug, toSetup } from './household-setup';
 
@@ -8,7 +9,13 @@ const cal = (calendarId: string, name: string, primary = false) => ({
   name,
   primary,
 });
-const EMPTY = { homeAddress: null, home: null, people: [], calendars: [] };
+const EMPTY = {
+  homeAddress: null,
+  home: null,
+  people: [],
+  calendars: [],
+  equipment: DEFAULT_EQUIPMENT,
+};
 
 describe('household setup', () => {
   it('turns names into ids', () => {

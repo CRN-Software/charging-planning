@@ -11,7 +11,7 @@ import { AccountsRepository } from '@/auth/accounts.repository';
 import { GoogleCalendarClient } from '@/google/google-calendar.client';
 import { GeoService } from '@/places/geo.service';
 import type { Coordinates } from '@/places/geo.service';
-import { HOME_PLACE, isHome, occurrencesOf, placeId } from './agenda-mapper';
+import { attachChargers, HOME_PLACE, isNear, occurrencesOf, placeId } from './agenda-mapper';
 import type { Occurrence } from './agenda-mapper';
 import { HouseholdRepository } from './household.repository';
 
@@ -61,7 +61,8 @@ export class HouseholdService {
       throw new BadRequestException('calendar linked to an unknown person');
     const home = setup.homeAddress ? await this.geo.geocode(setup.homeAddress) : undefined;
     if (setup.homeAddress && !home) throw new BadRequestException('home address not found');
-    const settings = { ...setup, home: home ? { lat: home.lat, lon: home.lon } : null };
+    const current = await this.households.settings(householdId);
+    const settings = { ...current, ...setup, home: home ? { lat: home.lat, lon: home.lon } : null };
     await this.households.save(householdId, settings);
     return settings;
   }
@@ -84,6 +85,7 @@ export class HouseholdService {
       else
         agenda.unresolved.push({ title: event.title, location: event.location, date: event.date });
     }
+    attachChargers(places, settings.equipment.chargers);
     await this.route(places, settings.home);
     return agenda;
   }
@@ -124,7 +126,7 @@ export class HouseholdService {
     if (places[id]) return id;
     const found = await this.geo.geocode(location);
     if (!found) return undefined;
-    if (home && isHome(home, found)) return HOME_PLACE;
+    if (home && isNear(home, found)) return HOME_PLACE;
     places[id] = {
       name: location.split(',')[0] ?? location,
       lat: found.lat,

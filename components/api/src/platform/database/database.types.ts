@@ -10,6 +10,8 @@ export interface HouseholdTable {
   name: string;
   /** Validated by householdSettingsSchema (@charging/contracts). */
   settings: Generated<unknown>;
+  /** Validated by planningSchema (@charging/contracts). */
+  planning: Generated<unknown>;
   created_at: Generated<Date>;
 }
 

@@ -1,8 +1,14 @@
-import { householdSettingsSchema } from '@charging/contracts';
+import { DEFAULT_EQUIPMENT, householdSettingsSchema } from '@charging/contracts';
 import type { HouseholdSettings } from '@charging/contracts';
 import { z } from 'zod';
 
-const EMPTY: HouseholdSettings = { homeAddress: null, home: null, people: [], calendars: [] };
+const EMPTY: HouseholdSettings = {
+  homeAddress: null,
+  home: null,
+  people: [],
+  calendars: [],
+  equipment: DEFAULT_EQUIPMENT,
+};
 
 /** Saved before calendars could involve several people: each person carried their calendars. */
 const legacySchema = z.object({
@@ -18,7 +24,7 @@ const legacySchema = z.object({
   ),
 });
 
-function upgrade(legacy: z.infer<typeof legacySchema>): HouseholdSettings {
+function upgrade(legacy: z.infer<typeof legacySchema>): Omit<HouseholdSettings, 'equipment'> {
   const calendars = new Map<string, HouseholdSettings['calendars'][number]>();
   for (const person of legacy.people) {
     for (const { accountId, calendarId } of person.calendars) {

@@ -1,8 +1,9 @@
 import { Body, Controller, Get, NotFoundException, Put, UseGuards } from '@nestjs/common';
-import { householdSetupSchema } from '@charging/contracts';
-import type { Agenda, Calendar, HouseholdSettings } from '@charging/contracts';
+import { equipmentSchema, householdSetupSchema, planningSchema } from '@charging/contracts';
+import type { Agenda, Calendar, HouseholdSettings, Planning } from '@charging/contracts';
 import { AccountsRepository } from '@/auth/accounts.repository';
 import { CurrentAccount, SessionGuard } from '@/auth/session.guard';
+import { EquipmentService } from './equipment.service';
 import { HouseholdRepository } from './household.repository';
 import { HouseholdService } from './household.service';
 
@@ -13,6 +14,7 @@ export class HouseholdController {
     private readonly accounts: AccountsRepository,
     private readonly households: HouseholdRepository,
     private readonly service: HouseholdService,
+    private readonly equipment: EquipmentService,
   ) {}
 
   @Get()
@@ -26,6 +28,29 @@ export class HouseholdController {
     @Body() body: unknown,
   ): Promise<HouseholdSettings> {
     return this.service.setup(await this.householdOf(accountId), householdSetupSchema.parse(body));
+  }
+
+  @Put('equipment')
+  async saveEquipment(
+    @CurrentAccount() accountId: string,
+    @Body() body: unknown,
+  ): Promise<HouseholdSettings> {
+    return this.equipment.save(await this.householdOf(accountId), equipmentSchema.parse(body));
+  }
+
+  @Get('planning')
+  async planning(@CurrentAccount() accountId: string): Promise<Planning> {
+    return this.households.planning(await this.householdOf(accountId));
+  }
+
+  @Put('planning')
+  async savePlanning(
+    @CurrentAccount() accountId: string,
+    @Body() body: unknown,
+  ): Promise<Planning> {
+    const planning = planningSchema.parse(body);
+    await this.households.savePlanning(await this.householdOf(accountId), planning);
+    return planning;
   }
 
   @Get('calendars')

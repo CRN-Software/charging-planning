@@ -23,6 +23,8 @@ export const agendaPlaceSchema = z.object({
   name: z.string(),
   lat: z.number(),
   lon: z.number(),
+  /** The household charger at this place, if any. */
+  charger: z.string().optional(),
   /** Driving routes to the other places (`home` included), by place id, when OSRM answered. */
   routes: z.record(z.string(), z.object({ km: z.number(), min: z.number() })),
 });

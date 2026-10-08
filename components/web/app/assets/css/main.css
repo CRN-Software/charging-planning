@@ -1291,3 +1291,43 @@ button.b.danger {
   border-radius: 6px;
   color: var(--muted);
 }
+.equip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.84rem;
+}
+.equip input[type='number'] {
+  width: 72px;
+  font: inherit;
+  padding: 3px 6px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.equip .wide {
+  flex: 1 1 240px;
+}
+.day-box {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  font-size: 0.7rem;
+}
+/* One framed block per vehicle or charger, so neighbours read apart. */
+.resource {
+  padding: 10px 12px;
+  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--charge);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 1px 3px rgba(19, 32, 43, 0.08);
+}
+.charger.resource,
+.charger.resource:first-child {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}

@@ -6,7 +6,7 @@ import { modeLabel } from '~/utils/plan';
 const store = useHouseholdStore();
 const { data: me } = await useMe();
 onMounted(async () => {
-  store.hydrate(me.value?.household.id);
+  store.hydrate();
   if (me.value) await store.loadRemote();
 });
 const unresolved = computed(() => store.remote?.agenda?.unresolved ?? []);
@@ -61,8 +61,8 @@ const onCreate = (kind: SlotKind, slot: Slot) => {
       />
       <div class="config">
         <QuestionList :questions="questions" :days="week.days" />
-        <TeslaSettings />
-        <ChargerSettings />
+        <BatterySettings />
+        <EquipmentSettings />
         <HouseholdSetup :my-name="me.name" @saved="store.loadRemote()" />
       </div>
       <TripSheet

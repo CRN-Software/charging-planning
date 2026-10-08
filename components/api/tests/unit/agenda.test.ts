@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { ignoredReason, isHome, occurrencesOf, placeId, timedEvent } from '@/household/agenda-mapper';
+import { attachChargers, ignoredReason, isNear, occurrencesOf, placeId, timedEvent } from '@/household/agenda-mapper';
+import { DEFAULT_EQUIPMENT, type AgendaPlace } from '@charging/contracts';
 import { readSettings } from '@/household/settings-reader';
 
 const event = (overrides: Record<string, unknown> = {}) => ({
@@ -66,8 +67,8 @@ describe('places', () => {
 
   it('are home within 200 m of it', () => {
     const home = { lat: 50.6, lon: 3.15 };
-    expect(isHome(home, { lat: 50.601, lon: 3.15 })).toBe(true);
-    expect(isHome(home, { lat: 50.61, lon: 3.15 })).toBe(false);
+    expect(isNear(home, { lat: 50.601, lon: 3.15 })).toBe(true);
+    expect(isNear(home, { lat: 50.61, lon: 3.15 })).toBe(false);
   });
 });
 
@@ -125,10 +126,22 @@ describe('household settings', () => {
         { accountId: account, calendarId: 'family', people: ['anne', 'tim'] },
         { accountId: account, calendarId: 'tim', people: ['tim'] },
       ],
+      equipment: DEFAULT_EQUIPMENT,
     });
   });
 
   it('are empty when unreadable', () => {
-    expect(readSettings({ nope: true })).toEqual({ homeAddress: null, home: null, people: [], calendars: [] });
+    expect(readSettings({ nope: true })).toEqual({ homeAddress: null, home: null, people: [], calendars: [], equipment: DEFAULT_EQUIPMENT });
+  });
+});
+
+describe('chargers', () => {
+  const charger = (id: string, lat: number, lon: number) => ({ id, label: id, address: id, kw: 11, limit: 100, hassle: 0, lat, lon });
+
+  it('belong to the calendar place they are at, or become a place of their own', () => {
+    const places: Record<string, AgendaPlace> = { 'p-office': { name: 'Bureau', lat: 50.62, lon: 3.06, routes: {} } };
+    attachChargers(places, [charger('work', 50.6205, 3.0601), charger('sc', 50.59, 3.11)]);
+    expect(places['p-office']?.charger).toBe('work');
+    expect(places).toHaveProperty('charger-sc', { name: 'sc', lat: 50.59, lon: 3.11, routes: {}, charger: 'sc' });
   });
 });

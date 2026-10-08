@@ -153,6 +153,15 @@ describe('charging plan', () => {
     expect(Math.round((routine?.socBefore ?? 0) + (routine?.amount ?? 0))).toBe(100);
   });
 
+  it('always charges for free where the car is parked anyway, even with no shortfall', () => {
+    const free = { ...h, chargeRoutines: [], chargers: { work: { ...must(h.chargers.work, 'work'), price: 0 } } };
+    const plan = planWeek(ctx({ household: free, settings: { soc: 60 } }));
+    expect(plan.chosen).toEqual([]);
+    expect(plan.sim.applied.some((c) => c.kind === 'onsite' && c.amount > 0.5)).toBe(true);
+    const paid = { ...free, chargers: { work: { ...must(h.chargers.work, 'work'), price: 0.1 } } };
+    expect(planWeek(ctx({ household: paid, settings: { soc: 60 } })).sim.applied.every((c) => c.reason)).toBe(true);
+  });
+
   it('only charges what a slow charger can deliver while parked', () => {
     const work = { ...must(h.chargers.work, 'work'), kw: 2 };
     const household = { ...h, chargers: { work } };

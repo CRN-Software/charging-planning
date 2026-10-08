@@ -63,6 +63,8 @@ export function chargeHow(c: AppliedCharge): string {
   if (c.kind === 'manual')
     return `Ajoutée par vous, ${fmtH(c.hours)} à ${c.kw} kW · ${fmtRate(c.price)}`;
   if (c.event) return `Journée de travail à ${c.event.title} à ajouter`;
+  if (c.kind === 'onsite' && c.price === 0)
+    return `Gratuite et déjà sur place : à brancher jusqu'à ${c.limit} %`;
   if (c.kind === 'onsite') return 'Déjà sur place, à brancher';
   return `Détour ${c.detourKm} km · ${fmtRate(c.price)}`;
 }

@@ -137,6 +137,13 @@ function costs(ctx: PlanContext, trips: readonly Trip[], sim: Simulation) {
   return { chargeEur, otherCarKm, otherCarEur, weekEur: chargeEur + otherCarEur, score };
 }
 
+/**
+ * Taken without being asked for: routines, and free charging where the car is parked anyway
+ * (filled to the charger limit, whether or not the battery runs short later).
+ */
+export const isAutomatic = (o: Opportunity): boolean =>
+  o.kind === 'routine' || (o.kind === 'onsite' && o.price === 0);
+
 const mobilityCache = new WeakMap<PlanContext, Map<string, Mobility>>();
 
 /** Mobility only changes when a suggested charge adds a presence (a workday at the office). */
@@ -192,7 +199,7 @@ export function evaluate(ctx: PlanContext, chosen: readonly Chosen[]): Plan {
   const charges: Step[] = [
     ...manual.filter((m) => m.t >= ctx.startH).map((charge) => ({ t: charge.t, charge })),
     ...opportunities
-      .filter((o) => o.kind === 'routine' || picked.has(o.id))
+      .filter((o) => isAutomatic(o) || picked.has(o.id))
       .map((o) => {
         const c = picked.get(o.id);
         return {
@@ -222,7 +229,7 @@ const progressed = (after: Violation | null, before: Violation) =>
 function newSessions(ctx: PlanContext, best: Plan, v: Violation): Chosen[][] {
   const used = new Set(best.chosen.map((c) => c.id));
   return best.opportunities
-    .filter((o) => o.kind !== 'routine' && !used.has(o.id) && o.t < v.t)
+    .filter((o) => !isAutomatic(o) && !used.has(o.id) && o.t < v.t)
     .flatMap((o) => {
       const amounts = o.fill
         ? [undefined]

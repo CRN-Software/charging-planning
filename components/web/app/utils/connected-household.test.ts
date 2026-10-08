@@ -1,5 +1,5 @@
 import { buildWeek, DEFAULT_SETTINGS, HOME, planWeek } from '@charging/planner';
-import type { Agenda, HouseholdSettings } from '@charging/contracts';
+import { DEFAULT_EQUIPMENT, type Agenda, type HouseholdSettings } from '@charging/contracts';
 import { describe, expect, it } from 'vitest';
 import { agendaEvents, connectedHousehold, isConfigured } from './connected-household';
 
@@ -13,6 +13,7 @@ const SETTINGS: HouseholdSettings = {
     { id: 'hugo', name: 'Hugo', driver: false },
   ],
   calendars: [{ accountId: ACCOUNT, calendarId: 'family', people: ['claire', 'hugo'] }],
+  equipment: DEFAULT_EQUIPMENT,
 };
 const AGENDA: Agenda = {
   events: [
@@ -81,5 +82,47 @@ describe('connected household', () => {
       gaps: {},
     });
     expect(plan.sim).toBeDefined();
+  });
+
+  it('charge at the office while the car is parked there, with the household chargers', () => {
+    const work = {
+      id: 'work',
+      label: 'Borne du bureau',
+      address: 'x',
+      kw: 11,
+      limit: 100,
+      price: 0.1,
+      hassle: 0.5,
+      lat: 50.62,
+      lon: 3.06,
+      workplace: { person: 'claire', days: [0, 1, 2, 3, 4], start: '8:30', end: '17:00' },
+    };
+    const settings = {
+      ...SETTINGS,
+      home: { lat: 50.6, lon: 3.15 },
+      equipment: { ...DEFAULT_EQUIPMENT, chargers: [work] },
+    };
+    const office = AGENDA.places['p-office'];
+    const agenda = {
+      ...AGENDA,
+      places: { ...AGENDA.places, ...(office && { 'p-office': { ...office, charger: 'work' } }) },
+    };
+    const household = connectedHousehold(settings, agenda);
+    expect(household.chargers.work?.place).toBe('p-office');
+    expect(household.workplace).toMatchObject({ who: 'claire', place: 'p-office' });
+    const week = buildWeek(NOW);
+    const plan = planWeek({
+      household,
+      days: week.days,
+      startH: week.startH,
+      events: week.instantiate(agendaEvents(agenda)),
+      manualCharges: [],
+      settings: { ...DEFAULT_SETTINGS, soc: 30 },
+      overrides: {},
+      gaps: {},
+    });
+    expect(plan.opportunities.some((o) => o.kind === 'onsite' && o.chargerId === 'work')).toBe(
+      true,
+    );
   });
 });

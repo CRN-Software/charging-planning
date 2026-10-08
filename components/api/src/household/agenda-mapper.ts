@@ -1,13 +1,13 @@
 import { createHash } from 'node:crypto';
-import type { IgnoredReason } from '@charging/contracts';
+import type { AgendaPlace, IgnoredReason, StoredCharger } from '@charging/contracts';
 import type { GoogleEvent } from '@/google/google-calendar.client';
 import { normalizeAddress } from '@/places/geo.service';
 import type { Coordinates } from '@/places/geo.service';
 
 export const HOUSEHOLD_TIME_ZONE = 'Europe/Paris';
 export const HOME_PLACE = 'home';
-/** Within this distance an event address is the household's home. */
-const HOME_RADIUS_KM = 0.2;
+/** Within this distance two addresses are the same place (an event at home, a charger at work). */
+const SAME_PLACE_KM = 0.2;
 
 export interface TimedEvent {
   googleId: string;
@@ -84,8 +84,8 @@ export function crowKm(a: Coordinates, b: Coordinates): number {
   return 2 * 6371 * Math.asin(Math.sqrt(h));
 }
 
-export const isHome = (home: Coordinates, point: Coordinates): boolean =>
-  crowKm(home, point) <= HOME_RADIUS_KM;
+export const isNear = (home: Coordinates, point: Coordinates): boolean =>
+  crowKm(home, point) <= SAME_PLACE_KM;
 
 /** A trip candidate and everybody it involves, across all the calendars it appears in. */
 export interface Occurrence extends TimedEvent {
@@ -144,4 +144,26 @@ export function occurrencesOf(copies: readonly CalendarCopy[]): {
       result.unlocated.push({ ...time, participants, reason });
   }
   return result;
+}
+
+/**
+ * A charger within reach of a calendar place is that place's charger (the car charges while
+ * parked there); the others become places of their own, routed like the rest.
+ */
+export function attachChargers(
+  places: Record<string, AgendaPlace>,
+  chargers: readonly StoredCharger[],
+): void {
+  for (const c of chargers) {
+    const near = Object.entries(places).find(([, p]) => !p.charger && isNear(c, p));
+    if (near) near[1].charger = c.id;
+    else
+      places[`charger-${c.id}`] = {
+        name: c.label,
+        lat: c.lat,
+        lon: c.lon,
+        routes: {},
+        charger: c.id,
+      };
+  }
 }
