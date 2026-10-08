@@ -6,6 +6,7 @@ import { Logger } from 'nestjs-pino';
 import { ZodValidationPipe } from 'nestjs-zod';
 import { AppModule } from './app.module';
 import { AppConfig } from './platform/config/config.module';
+import { PUBLIC_KEY_PATH } from './tesla/public-key.controller';
 
 export const API_PREFIX = 'api';
 
@@ -18,7 +19,7 @@ export const createApp = async (): Promise<NestFastifyApplication> => {
   );
   await app.register(fastifyCookie);
   app.useLogger(app.get(Logger));
-  app.setGlobalPrefix(API_PREFIX);
+  app.setGlobalPrefix(API_PREFIX, { exclude: [PUBLIC_KEY_PATH] });
   app.useGlobalPipes(new ZodValidationPipe());
   app.enableShutdownHooks();
   app.get(AppConfig); // fail fast if env is invalid
