@@ -27,17 +27,26 @@ const onCreate = (kind: SlotKind, slot: Slot) => {
 </script>
 
 <template>
-  <div class="wrap">
+  <LoginScreen v-if="!me" />
+  <div v-else class="wrap">
     <AppHeader :label="week?.label ?? ''" :vehicle="vehicle" />
-    <HouseholdSetup v-if="me && !store.connected" :my-name="me.name" @saved="store.loadRemote()" />
+    <HouseholdSetup
+      v-if="store.remote && !store.connected"
+      :my-name="me.name"
+      @saved="store.loadRemote()"
+    />
     <p v-if="unresolved.length" class="card unresolved">
       Adresses introuvables, événements ignorés :
       <span v-for="u in unresolved" :key="`${u.date}-${u.title}`" class="pill warn"
         >{{ u.title }} ({{ u.location }})</span
       >
     </p>
-    <template v-if="week && plan && baseline">
+    <template v-if="store.connected && week && plan && baseline">
       <StatTiles :plan="plan" :questions-count="questions.length" />
+      <section v-if="plan.conflicts.length" class="card unresolved">
+        <h2>Incohérences</h2>
+        <p v-for="(c, i) in plan.conflicts" :key="i">{{ week.days[c.d]?.label }} · {{ c.text }}</p>
+      </section>
       <div class="overview">
         <BatteryChart :plan="plan" :baseline="baseline" :days="week.days" :vehicle="vehicle" />
         <ChargePlan :plan="plan" :days="week.days" @add="sheet = { kind: 'add-charge' }" />
@@ -54,12 +63,7 @@ const onCreate = (kind: SlotKind, slot: Slot) => {
         <QuestionList :questions="questions" :days="week.days" />
         <TeslaSettings />
         <ChargerSettings />
-        <PlaceSettings />
-        <HouseholdSetup
-          v-if="me && store.connected"
-          :my-name="me.name"
-          @saved="store.loadRemote()"
-        />
+        <HouseholdSetup :my-name="me.name" @saved="store.loadRemote()" />
       </div>
       <TripSheet
         v-if="sheet?.kind === 'trip'"
@@ -81,6 +85,8 @@ const onCreate = (kind: SlotKind, slot: Slot) => {
         @close="close"
       />
     </template>
-    <p v-else class="card skeleton">Calcul du planning de la semaine…</p>
+    <p v-else-if="!store.remote || store.connected" class="card skeleton">
+      Calcul du planning de la semaine…
+    </p>
   </div>
 </template>

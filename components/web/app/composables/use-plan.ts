@@ -68,9 +68,7 @@ export function usePlan() {
           ),
         })),
       }))
-      .filter(
-        (q) => q.kind === 'place' || new Set(q.results.map((r) => planSignature(r.plan))).size > 1,
-      );
+      .filter((q) => new Set(q.results.map((r) => planSignature(r.plan))).size > 1);
   });
 
   const pending = computed(() => new Set(questions.value.map((q) => q.group)));

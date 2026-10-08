@@ -1,17 +1,31 @@
-import type { Household, Loop, Plan } from '@charging/planner';
+import type { Household, Plan, Trip } from '@charging/planner';
 
 /** Battery level at hour `t` of the window (last known point before it). */
 export const socAt = (plan: Plan, t: number, fallback: number): number =>
   [...plan.sim.points].reverse().find((p) => p.t <= t)?.soc ?? fallback;
 
-export const sumKm = (loops: readonly Loop[]): number => loops.reduce((s, l) => s + l.km, 0);
+export const sumKm = (trips: readonly Trip[]): number =>
+  Math.round(trips.reduce((s, t) => s + t.km, 0));
 
-export const trackedLoops = (plan: Plan, h: Household): Loop[] =>
-  plan.loops.filter((l) => l.mode === h.trackedMode);
+export const trackedTrips = (plan: Plan, h: Household): Trip[] =>
+  plan.trips.filter((t) => t.mode === h.trackedMode);
 
 export const modeLabel = (h: Household, mode: string): string => h.modes[mode]?.label ?? mode;
 
-export const personColor = (h: Household, id: string | undefined): string =>
-  (id === undefined ? undefined : h.people[id]?.color) ?? 'var(--muted)';
+export const personName = (h: Household, id: string | null | undefined): string =>
+  (id ? h.people[id]?.name : undefined) ?? '?';
 
-export const firstDeparture = (l: Loop): number => l.legs[0]?.dep ?? 0;
+export const personColor = (h: Household, id: string | null | undefined): string =>
+  (id ? h.people[id]?.color : undefined) ?? 'var(--muted)';
+
+export const placeName = (h: Household, id: string): string => h.places[id]?.name ?? id;
+
+/** "Anne avec Tim, Alice" — who is in the car. */
+export const crew = (h: Household, t: Trip): string => {
+  const others = t.passengers.map((p) => personName(h, p)).join(', ');
+  if (!t.driver) return others;
+  return others ? `${personName(h, t.driver)} avec ${others}` : personName(h, t.driver);
+};
+
+/** The occurrence group of an event (corrections are stored per group). */
+export const groupOfEvent = (id: string): string => `occ:${id}`;

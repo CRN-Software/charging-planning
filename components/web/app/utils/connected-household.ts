@@ -1,16 +1,21 @@
-import { DEMO_HOUSEHOLD, HOME } from '@charging/planner';
+import {
+  DEFAULT_COSTS,
+  DEFAULT_MODES,
+  EXTERNAL_PERSON,
+  HOME,
+  SUPERCHARGER_PLACES,
+  SUPERCHARGERS,
+} from '@charging/planner';
 import type { EventTemplate, Household, Person, Place } from '@charging/planner';
 import type { Agenda, HouseholdSettings } from '@charging/contracts';
 
 const PERSON_COLORS = ['var(--p1)', 'var(--p2)', 'var(--p3)', 'var(--p4)', 'var(--p5)'];
-/** Public superchargers offered until the household configures its own chargers. */
-const DEFAULT_CHARGERS = ['lesquin', 'englos'] as const;
+
+export type ConfiguredSettings = HouseholdSettings & { home: { lat: number; lon: number } };
 
 /** A household ready to plan: a geocoded home and at least one person with calendars. */
-export const isConfigured = (
-  settings: HouseholdSettings | null,
-): settings is HouseholdSettings & { home: { lat: number; lon: number } } =>
-  settings?.home != null && settings.people.some((p) => p.calendars.length > 0);
+export const isConfigured = (settings: HouseholdSettings | null): settings is ConfiguredSettings =>
+  settings?.home != null && settings.people.length > 0 && settings.calendars.length > 0;
 
 const people = (settings: HouseholdSettings): Record<string, Person> => ({
   ...Object.fromEntries(
@@ -18,75 +23,51 @@ const people = (settings: HouseholdSettings): Record<string, Person> => ({
       p.id,
       {
         name: p.name,
-        adult: p.adult,
+        driver: p.driver,
         color: PERSON_COLORS[i % PERSON_COLORS.length] ?? 'var(--p1)',
       },
     ]),
   ),
-  external: DEMO_HOUSEHOLD.people.external ?? {
-    name: 'Hors foyer',
-    adult: true,
-    external: true,
-    color: 'var(--muted)',
-  },
+  external: EXTERNAL_PERSON,
 });
 
 const agendaPlaces = (agenda: Agenda): Record<string, Place> =>
   Object.fromEntries(
     Object.entries(agenda.places).map(([id, p]) => [
       id,
-      {
-        name: p.name,
-        lat: p.lat,
-        lon: p.lon,
-        ...(p.fromHome ? { routes: { [HOME]: p.fromHome } } : {}),
-      },
+      { name: p.name, lat: p.lat, lon: p.lon, routes: p.routes },
     ]),
   );
 
-const defaultChargers = () =>
-  Object.fromEntries(
-    DEFAULT_CHARGERS.flatMap((id) =>
-      DEMO_HOUSEHOLD.chargers[id] ? [[id, DEMO_HOUSEHOLD.chargers[id]]] : [],
-    ),
-  );
-
-const chargerPlaces = () =>
-  Object.fromEntries(
-    DEFAULT_CHARGERS.flatMap((id) =>
-      DEMO_HOUSEHOLD.places[id] ? [[id, DEMO_HOUSEHOLD.places[id]]] : [],
-    ),
-  );
-
-/** The planner's household for a connected family: its people, home and calendar places. */
-export function connectedHousehold(
-  settings: HouseholdSettings & { home: { lat: number; lon: number } },
-  agenda: Agenda,
-): Household {
-  const { workplace: _demoWorkplace, ...defaults } = DEMO_HOUSEHOLD;
+/** The planner's household: its people, home and calendar places, default vehicles and chargers. */
+export function connectedHousehold(settings: ConfiguredSettings, agenda: Agenda): Household {
   return {
-    ...defaults,
     people: people(settings),
-    driverPreference: settings.people.filter((p) => p.adult).map((p) => p.id),
+    driverPreference: settings.people.filter((p) => p.driver).map((p) => p.id),
+    modes: DEFAULT_MODES,
+    autoModes: ['tesla', 'voiture'],
+    trackedMode: 'tesla',
+    externalMode: 'tiers',
     places: {
       [HOME]: { name: 'Domicile', ...settings.home },
-      ...chargerPlaces(),
+      ...SUPERCHARGER_PLACES,
       ...agendaPlaces(agenda),
     },
-    chargers: defaultChargers(),
+    chargers: SUPERCHARGERS,
     escortRules: [],
     gapRules: {},
     chargeRoutines: [],
+    costs: DEFAULT_COSTS,
   };
 }
 
 export const agendaEvents = (agenda: Agenda): EventTemplate[] =>
-  agenda.events.map((e) => ({
-    id: e.id,
-    who: e.who,
-    date: e.date,
-    start: e.start,
-    end: e.end,
-    title: e.title,
-    place: e.place,
+  agenda.events.map(({ id, participants, date, start, end, title, place }) => ({
+    id,
+    participants,
+    date,
+    start,
+    end,
+    title,
+    place,
   }));

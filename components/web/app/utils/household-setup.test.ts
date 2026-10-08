@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { calendarRows, slug, toSetup } from './household-setup';
+import { addPerson, calendarRows, initialPeople, slug, toSetup } from './household-setup';
 
 const ACCOUNT = '0d6c2a1e-9a51-4b0e-8a0f-3b1d2c4e5f60';
 const cal = (calendarId: string, name: string, primary = false) => ({
@@ -8,6 +8,7 @@ const cal = (calendarId: string, name: string, primary = false) => ({
   name,
   primary,
 });
+const EMPTY = { homeAddress: null, home: null, people: [], calendars: [] };
 
 describe('household setup', () => {
   it('turns names into ids', () => {
@@ -15,37 +16,34 @@ describe('household setup', () => {
     expect(slug('  ')).toBe('personne');
   });
 
-  it('prefills the main calendar with the account name', () => {
-    const rows = calendarRows(
-      [cal('me', 'Agenda', true), cal('kids', 'Enfants')],
-      { homeAddress: null, home: null, people: [] },
-      'Claire',
-    );
-    expect(rows.map((r) => [r.name, r.use, r.adult])).toEqual([
-      ['Claire', false, true],
-      ['Enfants', false, false],
-    ]);
+  it('starts a new household with its signed-in driver on the main calendar', () => {
+    const people = initialPeople(EMPTY, 'Claire');
+    expect(people).toEqual([{ id: 'claire', name: 'Claire', driver: true }]);
+    expect(
+      calendarRows([cal('me', 'Agenda', true), cal('fam', 'Famille')], EMPTY, people).map(
+        (r) => r.people,
+      ),
+    ).toEqual([['claire'], []]);
   });
 
-  it('groups the calendars of one person and skips unused ones', () => {
-    const rows = [
-      { calendar: cal('a', 'Travail'), use: true, name: 'Claire', adult: true },
-      { calendar: cal('b', 'Perso'), use: true, name: 'claire', adult: false },
-      { calendar: cal('c', 'Fêtes'), use: false, name: 'Fêtes', adult: false },
+  it('gives each new person a unique id', () => {
+    const people = addPerson(addPerson([{ id: 'tim', name: 'Tim', driver: false }], 'Tim'), 'Tim');
+    expect(people.map((p) => p.id)).toEqual(['tim', 'tim-2', 'tim-3']);
+  });
+
+  it('links a shared calendar to several people and drops unused calendars', () => {
+    const people = [
+      { id: 'anne', name: 'Anne', driver: true },
+      { id: 'tim', name: 'Tim', driver: false },
     ];
-    expect(toSetup(' 1 rue Exemple ', rows)).toEqual({
+    const rows = [
+      { calendar: cal('fam', 'Famille'), people: ['anne', 'tim'] },
+      { calendar: cal('work', 'Travail'), people: [] },
+    ];
+    expect(toSetup(' 1 rue Exemple ', people, rows)).toEqual({
       homeAddress: '1 rue Exemple',
-      people: [
-        {
-          id: 'claire',
-          name: 'Claire',
-          adult: true,
-          calendars: [
-            { accountId: ACCOUNT, calendarId: 'a' },
-            { accountId: ACCOUNT, calendarId: 'b' },
-          ],
-        },
-      ],
+      people,
+      calendars: [{ accountId: ACCOUNT, calendarId: 'fam', people: ['anne', 'tim'] }],
     });
   });
 });

@@ -1,19 +1,21 @@
+import {
+  DEFAULT_COSTS,
+  DEFAULT_SETTINGS,
+  EXTERNAL_PERSON,
+  SUPERCHARGER_PLACES,
+  SUPERCHARGERS,
+} from './defaults.ts';
 import type { EventTemplate, Household, ManualCharge, Settings } from './types.ts';
 
-/** Fictional household used by the demo mode and the tests. */
+/** Fictional household used by the tests (never shown to users). */
 export const DEMO_HOUSEHOLD: Household = {
   people: {
-    paul: { name: 'Paul', adult: true, color: 'var(--p1)' },
-    claire: { name: 'Claire', adult: true, color: 'var(--p2)' },
+    paul: { name: 'Paul', driver: true, color: 'var(--p1)' },
+    claire: { name: 'Claire', driver: true, color: 'var(--p2)' },
     hugo: { name: 'Hugo', color: 'var(--p3)' },
     lea: { name: 'Léa', color: 'var(--p4)' },
     tom: { name: 'Tom', color: 'var(--p5)' },
-    external: {
-      name: 'Hors foyer (ami, covoiturage)',
-      adult: true,
-      external: true,
-      color: 'var(--muted)',
-    },
+    external: EXTERNAL_PERSON,
   },
   driverPreference: ['claire', 'paul'],
   modes: {
@@ -39,8 +41,7 @@ export const DEMO_HOUSEHOLD: Household = {
     garderie: { name: 'Garderie', lat: 50.598, lon: 3.155, km: 2 },
     'grands-parents': { name: 'Grands-parents', lat: 50.57, lon: 2.869 },
     courses: { name: 'Courses', lat: 50.493, lon: 2.958 },
-    lesquin: { name: 'Superchargeur Lesquin', lat: 50.589, lon: 3.111 },
-    englos: { name: 'Superchargeur Englos', lat: 50.627, lon: 2.958 },
+    ...SUPERCHARGER_PLACES,
     unknown: { name: 'Lieu à préciser', km: 5, unknown: true },
   },
   chargers: {
@@ -54,33 +55,7 @@ export const DEMO_HOUSEHOLD: Household = {
       hassle: 0.5,
       weekdays: [0, 1, 2, 3, 4],
     },
-    lesquin: {
-      label: 'Superchargeur Lesquin',
-      place: 'lesquin',
-      kw: 150,
-      limit: 90,
-      sessionH: 0.75,
-      hassle: 3,
-      tariffs: [
-        [0, 0.16],
-        [4, 0.21],
-        [9, 0.38],
-        [20, 0.28],
-      ],
-    },
-    englos: {
-      label: 'Superchargeur Englos',
-      place: 'englos',
-      kw: 150,
-      limit: 90,
-      sessionH: 0.75,
-      hassle: 3,
-      tariffs: [
-        [0, 0.22],
-        [9, 0.38],
-        [21, 0.22],
-      ],
-    },
+    ...SUPERCHARGERS,
   },
   workplace: {
     who: 'paul',
@@ -99,22 +74,22 @@ export const DEMO_HOUSEHOLD: Household = {
       note: 'Un ami emmène les enfants à la piscine le mardi.',
     },
   ],
-  gapRules: { '2-conservatoire-13:50>17:25': 'stay' },
+  gapRules: { 'wait:2:conservatoire:13:50': 'stay' },
   chargeRoutines: [{ wd: 1, place: 'bureau' }],
-  costs: { otherCarEurPerKm: 0.11, energyValueEurPerKwh: 0.2 },
+  costs: DEFAULT_COSTS,
 };
 
-export const DEMO_SETTINGS: Settings = { soc: 45, reserveKm: 11, batteryKwh: 80, whPerKm: 170 };
+export const DEMO_SETTINGS: Settings = DEFAULT_SETTINGS;
 
 const ev = (
   id: string,
-  who: string,
+  participant: string,
   wd: number,
   start: string,
   end: string,
   title: string,
   place: string,
-): EventTemplate => ({ id, who, wd, start, end, title, place });
+): EventTemplate => ({ id, participants: [participant], wd, start, end, title, place });
 
 export const DEMO_EVENTS: readonly EventTemplate[] = [
   ev('a1', 'paul', 0, '8:00', '17:00', 'Bureau', 'bureau'),

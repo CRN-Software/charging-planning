@@ -1,5 +1,5 @@
 import { distance, HOME } from './geo.ts';
-import { span, type Loop } from './inference.ts';
+import type { Mobility } from './mobility.ts';
 import { abs, must, toH } from './time.ts';
 import { WINDOW_END_T } from './week.ts';
 import type {
@@ -81,28 +81,30 @@ function session(ctx: ChargingContext, id: ChargerId, hours: number, startH: num
   };
 }
 
-export function onsiteOpportunities(ctx: ChargingContext, tracked: readonly Loop[]): Opportunity[] {
+/** The tracked vehicle parked, or waiting with its driver, at a place with a charger. */
+export function onsiteOpportunities(ctx: ChargingContext, m: Mobility): Opportunity[] {
   const h = ctx.household;
-  return tracked.flatMap((l) =>
-    l.outings.flatMap((o) => {
-      const chargerId = h.places[o.place]?.charger;
-      if (chargerId === undefined) return [];
-      const routine = h.chargeRoutines.some((r) => r.wd === o.wd && r.place === o.place);
-      const s = session(ctx, chargerId, o.end - o.start, o.start);
-      return [
-        {
+  return [...m.ledgers.entries()].flatMap(([d, ledger]) => {
+    const wd = ctx.days[d]?.wd ?? 0;
+    return ledger
+      .of(h.trackedMode)
+      .filter((b) => b.kind === 'parked' && h.places[b.at]?.charger !== undefined)
+      .map((b): Opportunity => {
+        const chargerId = h.places[b.at]?.charger ?? '';
+        const routine = h.chargeRoutines.some((r) => r.wd === wd && r.place === b.at);
+        const s = session(ctx, chargerId, b.to - b.from, b.from);
+        return {
           ...s,
-          id: `${o.place}-${o.wd}`,
+          id: `${b.at}-${wd}`,
           kind: routine ? 'routine' : 'onsite',
-          d: o.d,
-          wd: o.wd,
-          t: abs(o.d, o.start),
+          d,
+          wd,
+          t: abs(d, b.from),
           hassle: routine ? 0 : s.hassle,
           fill: true,
-        } satisfies Opportunity,
-      ];
-    }),
-  );
+        };
+      });
+  });
 }
 
 export function workdayOpportunities(
@@ -115,7 +117,10 @@ export function workdayOpportunities(
   if (!w || chargerId === undefined) return [];
   const [start, end] = [toH(w.start), toH(w.end)];
   const busy = (d: number) =>
-    events.some((e) => e.who === w.who && e.d === d && toH(e.start) < end && toH(e.end) > start);
+    events.some(
+      (e) =>
+        e.participants.includes(w.who) && e.d === d && toH(e.start) < end && toH(e.end) > start,
+    );
   return ctx.days
     .filter(({ d, wd }) => w.days.includes(wd) && !taken.has(`${w.place}-${wd}`) && !busy(d))
     .map(({ d, wd }) => ({
@@ -129,7 +134,7 @@ export function workdayOpportunities(
       fill: true,
       event: {
         id: `wd-${wd}`,
-        who: w.who,
+        participants: [w.who],
         d,
         wd,
         start: w.start,
@@ -141,11 +146,12 @@ export function workdayOpportunities(
     }));
 }
 
-export function superchargerOpportunities(
-  ctx: ChargingContext,
-  tracked: readonly Loop[],
-): Opportunity[] {
-  const busy = tracked.map(span);
+/** Supercharger sessions while the tracked vehicle is free at home. */
+export function superchargerOpportunities(ctx: ChargingContext, m: Mobility): Opportunity[] {
+  const h = ctx.household;
+  const busy = [...m.ledgers.entries()].flatMap(([d, ledger]) =>
+    ledger.of(h.trackedMode).map((b): [number, number] => [abs(d, b.from), abs(d, b.to)]),
+  );
   const stations = Object.entries(ctx.household.chargers).filter(([, c]) => c.tariffs?.length);
   return stations
     .flatMap(([id, c]) =>
@@ -201,7 +207,8 @@ export function presenceEvents(
   return manual
     .filter(
       (m) =>
-        m.workplace && !events.some((e) => e.d === m.d && e.place === w.place && e.who === w.who),
+        m.workplace &&
+        !events.some((e) => e.d === m.d && e.place === w.place && e.participants.includes(w.who)),
     )
     .map((m) => {
       const c = charger(ctx.household, m.chargerId);
@@ -211,7 +218,7 @@ export function presenceEvents(
         `${Math.floor(x)}:${String(Math.round((x % 1) * 60)).padStart(2, '0')}`;
       return {
         id: `mc-${m.manualId ?? m.id}`,
-        who: w.who,
+        participants: [w.who],
         d: m.d,
         wd: m.wd ?? 0,
         start: hhmm(start),

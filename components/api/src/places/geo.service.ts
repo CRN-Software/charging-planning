@@ -1,34 +1,37 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Kysely, sql } from 'kysely';
-import { z } from 'zod';
 import type { Database } from '@/platform/database/database.types';
+import {
+  addressCandidates,
+  ban,
+  inFrance,
+  looksLikeAddress,
+  nominatim,
+  osrmTable,
+} from './providers';
+import type { Coordinates, Geocoded, Route } from './providers';
 
-const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
-const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving';
-const USER_AGENT = 'charging-planning (https://charging-planning.crn-tech.fr; support@crn-tech.fr)';
+export type { Coordinates, Geocoded, Route } from './providers';
+
 /** Nominatim usage policy: at most one request per second. */
 const NOMINATIM_INTERVAL_MS = 1100;
-
-export interface Coordinates {
-  lat: number;
-  lon: number;
-}
-export interface Geocoded extends Coordinates {
-  label: string;
-}
-
-const nominatimSchema = z.array(
-  z.object({ lat: z.coerce.number(), lon: z.coerce.number(), display_name: z.string() }),
-);
-const osrmSchema = z.object({
-  routes: z.array(z.object({ distance: z.number(), duration: z.number() })),
-});
+/** A failed lookup is retried after a day: the address may be fixed, providers improve. */
+const NOT_FOUND_TTL_MS = 24 * 3600 * 1000;
 
 export const normalizeAddress = (address: string): string =>
   address.trim().replace(/\s+/g, ' ').toLowerCase();
 const round = (value: number): number => Math.round(value * 1e5) / 1e5;
+const routeKey = (from: Coordinates | undefined, to: Coordinates | undefined) => {
+  if (!from || !to) throw new Error('unknown point');
+  return {
+    from_lat: round(from.lat),
+    from_lon: round(from.lon),
+    to_lat: round(to.lat),
+    to_lon: round(to.lon),
+  };
+};
 
-/** Geocoding (OpenStreetMap Nominatim) and driving routes (OSRM), cached in Postgres for every household. */
+/** Geocoding (BAN, OpenStreetMap) and driving routes (OSRM), cached in Postgres for every household. */
 @Injectable()
 export class GeoService {
   private readonly logger = new Logger(GeoService.name);
@@ -43,78 +46,130 @@ export class GeoService {
       .selectAll()
       .where('query', '=', query)
       .executeTakeFirst();
-    if (cached)
-      return cached.lat === null || cached.lon === null
-        ? undefined
-        : { lat: cached.lat, lon: cached.lon, label: cached.label ?? address };
-    const found = await this.throttled(() => this.nominatim(query));
+    if (cached?.lat != null && cached.lon != null) {
+      return { lat: cached.lat, lon: cached.lon, label: cached.label ?? address };
+    }
+    if (cached && Date.now() - cached.created_at.getTime() < NOT_FOUND_TTL_MS) return undefined;
+    const found = await this.lookup(query);
+    const row = {
+      lat: found?.lat ?? null,
+      lon: found?.lon ?? null,
+      label: found?.label ?? null,
+      created_at: new Date(),
+    };
     await this.db
       .insertInto('geocode_cache')
-      .values({
-        query,
-        lat: found?.lat ?? null,
-        lon: found?.lon ?? null,
-        label: found?.label ?? null,
-      })
-      .onConflict((oc) => oc.column('query').doNothing())
+      .values({ query, ...row })
+      .onConflict((oc) => oc.column('query').doUpdateSet(row))
       .execute();
     return found;
   }
 
-  async route(
-    from: Coordinates,
-    to: Coordinates,
-  ): Promise<{ km: number; min: number } | undefined> {
-    const key = {
-      from_lat: round(from.lat),
-      from_lon: round(from.lon),
-      to_lat: round(to.lat),
-      to_lon: round(to.lon),
-    };
-    const cached = await this.db
-      .selectFrom('route_cache')
-      .select(['km', 'min'])
-      .where(
-        sql<boolean>`(from_lat, from_lon, to_lat, to_lon) = (${key.from_lat}, ${key.from_lon}, ${key.to_lat}, ${key.to_lon})`,
-      )
-      .executeTakeFirst();
-    if (cached) return cached;
-    const route = await this.osrm(key);
-    if (route) {
+  /**
+   * Driving routes between every pair of places, by id. Cached pairs are reused; when one is
+   * missing, a single OSRM table request computes them all. A pair OSRM cannot route is left out:
+   * the planner then falls back on the straight-line distance.
+   */
+  async routes(
+    points: Record<string, Coordinates>,
+  ): Promise<Record<string, Record<string, Route>>> {
+    const ids = Object.keys(points);
+    const pairs = ids.flatMap((from) =>
+      ids.filter((to) => to !== from).map((to) => [from, to] as const),
+    );
+    const cached = await this.cachedRoutes(points, pairs);
+    const missing = pairs.some(([from, to]) => !cached.has(`${from}>${to}`));
+    const table = missing
+      ? await this.safely('OSRM', () => this.computeTable(points, ids))
+      : undefined;
+    const result: Record<string, Record<string, Route>> = {};
+    for (const [from, to] of pairs) {
+      const route = cached.get(`${from}>${to}`) ?? table?.get(`${from}>${to}`);
+      if (route) (result[from] ??= {})[to] = route;
+    }
+    return result;
+  }
+
+  private async cachedRoutes(
+    points: Record<string, Coordinates>,
+    pairs: readonly (readonly [string, string])[],
+  ) {
+    const keys = pairs.map(([from, to]) => ({ from, to, key: routeKey(points[from], points[to]) }));
+    const rows = keys.length
+      ? await this.db
+          .selectFrom('route_cache')
+          .select(['from_lat', 'from_lon', 'to_lat', 'to_lon', 'km', 'min'])
+          .where(
+            sql<boolean>`(from_lat, from_lon, to_lat, to_lon) in (${sql.join(keys.map(({ key }) => sql`(${key.from_lat}, ${key.from_lon}, ${key.to_lat}, ${key.to_lon})`))})`,
+          )
+          .execute()
+      : [];
+    const byKey = new Map(
+      rows.map((r) => [
+        `${Number(r.from_lat)},${Number(r.from_lon)},${Number(r.to_lat)},${Number(r.to_lon)}`,
+        { km: r.km, min: r.min },
+      ]),
+    );
+    return new Map(
+      keys.flatMap(({ from, to, key }) => {
+        const route = byKey.get(`${key.from_lat},${key.from_lon},${key.to_lat},${key.to_lon}`);
+        return route ? [[`${from}>${to}`, route] as const] : [];
+      }),
+    );
+  }
+
+  private async computeTable(points: Record<string, Coordinates>, ids: string[]) {
+    const matrix = await osrmTable(
+      ids.map((id) => {
+        const point = points[id];
+        if (!point) throw new Error(`unknown point ${id}`);
+        return point;
+      }),
+    );
+    const found = new Map<string, Route>();
+    const rows = ids.flatMap((from, i) =>
+      ids.flatMap((to, j) => {
+        const route = matrix[i]?.[j];
+        if (i === j || !route) return [];
+        found.set(`${from}>${to}`, route);
+        return [{ ...routeKey(points[from], points[to]), ...route }];
+      }),
+    );
+    if (rows.length)
       await this.db
         .insertInto('route_cache')
-        .values({ ...key, ...route })
+        .values(rows)
         .onConflict((oc) => oc.doNothing())
         .execute();
+    return found;
+  }
+
+  /** Tries each candidate form of the address; per candidate, the better provider goes first. */
+  private async lookup(query: string): Promise<Geocoded | undefined> {
+    for (const candidate of addressCandidates(query)) {
+      const found = await this.lookupOne(candidate);
+      if (found) return found;
     }
-    return route;
+    return undefined;
   }
 
-  private async nominatim(query: string): Promise<Geocoded | undefined> {
-    const response = await fetch(
-      `${NOMINATIM_URL}?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`,
-      {
-        headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'fr' },
-      },
-    );
-    if (!response.ok) throw new Error(`Nominatim: HTTP ${response.status}`);
-    const [first] = nominatimSchema.parse(await response.json());
-    return first ? { lat: first.lat, lon: first.lon, label: first.display_name } : undefined;
+  private async lookupOne(query: string): Promise<Geocoded | undefined> {
+    const osm = () => this.safely('Nominatim', () => this.throttled(() => nominatim(query)));
+    if (!inFrance(query)) return osm();
+    const national = () => this.safely('BAN', () => ban(query));
+    const [first, second] = looksLikeAddress(query) ? [national, osm] : [osm, national];
+    return (await first()) ?? (await second());
   }
 
-  private async osrm(key: { from_lat: number; from_lon: number; to_lat: number; to_lon: number }) {
-    const path = `${key.from_lon},${key.from_lat};${key.to_lon},${key.to_lat}`;
+  private async safely<T>(
+    provider: string,
+    task: () => Promise<T | undefined>,
+  ): Promise<T | undefined> {
     try {
-      const response = await fetch(`${OSRM_URL}/${path}?overview=false`, {
-        headers: { 'User-Agent': USER_AGENT },
-      });
-      const [route] = osrmSchema.parse(await response.json()).routes;
-      return route
-        ? { km: Math.round(route.distance / 100) / 10, min: Math.round(route.duration / 60) }
-        : undefined;
+      return await task();
     } catch (error) {
-      this.logger.warn(`OSRM unavailable: ${(error as Error).message}`);
-      return undefined; // the planner falls back on straight-line distance
+      this.logger.warn(`${provider} unavailable: ${(error as Error).message}`);
+      return undefined;
     }
   }
 

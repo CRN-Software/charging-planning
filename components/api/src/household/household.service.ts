@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type {
   Agenda,
+  AgendaEvent,
   AgendaPlace,
   Calendar,
   HouseholdSettings,
@@ -10,15 +11,21 @@ import { AccountsRepository } from '@/auth/accounts.repository';
 import { GoogleCalendarClient } from '@/google/google-calendar.client';
 import { GeoService } from '@/places/geo.service';
 import type { Coordinates } from '@/places/geo.service';
-import { HOME_PLACE, isHome, placeId, timedEvent } from './agenda-mapper';
-import type { TimedEvent } from './agenda-mapper';
+import { HOME_PLACE, isHome, occurrencesOf, placeId } from './agenda-mapper';
+import type { Occurrence } from './agenda-mapper';
 import { HouseholdRepository } from './household.repository';
 
 const WINDOW_DAYS = 8;
 
-interface PersonEvent extends TimedEvent {
-  who: string;
-}
+const toAgendaEvent = (o: Occurrence, place: string): AgendaEvent => ({
+  id: o.googleId,
+  participants: o.participants,
+  date: o.date,
+  start: o.start,
+  end: o.end,
+  title: o.title,
+  place,
+});
 
 @Injectable()
 export class HouseholdService {
@@ -47,8 +54,11 @@ export class HouseholdService {
   /** Only calendars of the household's own accounts; the home address is geocoded once here. */
   async setup(householdId: string, setup: HouseholdSetup): Promise<HouseholdSettings> {
     const members = new Set(await this.accounts.members(householdId));
-    const foreign = setup.people.flatMap((p) => p.calendars).find((c) => !members.has(c.accountId));
-    if (foreign) throw new BadRequestException('calendar of another household');
+    if (setup.calendars.some((c) => !members.has(c.accountId)))
+      throw new BadRequestException('calendar of another household');
+    const people = new Set(setup.people.map((p) => p.id));
+    if (setup.calendars.some((c) => c.people.some((p) => !people.has(p))))
+      throw new BadRequestException('calendar linked to an unknown person');
     const home = setup.homeAddress ? await this.geo.geocode(setup.homeAddress) : undefined;
     if (setup.homeAddress && !home) throw new BadRequestException('home address not found');
     const settings = { ...setup, home: home ? { lat: home.lat, lon: home.lon } : null };
@@ -59,43 +69,49 @@ export class HouseholdService {
   async agenda(householdId: string, now: Date): Promise<Agenda> {
     const settings = await this.households.settings(householdId);
     const to = new Date(now.getTime() + WINDOW_DAYS * 24 * 3600 * 1000);
-    const events = await this.personEvents(settings, now, to);
+    const { occurrences: events, unlocated, ignored } = await this.occurrences(settings, now, to);
     const places: Record<string, AgendaPlace> = {};
-    const agenda: Agenda = { events: [], places, unresolved: [] };
+    const agenda: Agenda = {
+      events: [],
+      places,
+      unlocated: unlocated.map(({ googleId, ...rest }) => ({ id: googleId, ...rest })),
+      unresolved: [],
+      ignored,
+    };
     for (const event of events) {
       const place = await this.resolve(event.location, settings.home, places);
-      if (place)
-        agenda.events.push({
-          id: `${event.who}:${event.googleId}`,
-          who: event.who,
-          date: event.date,
-          start: event.start,
-          end: event.end,
-          title: event.title,
-          place,
-        });
+      if (place) agenda.events.push(toAgendaEvent(event, place));
       else
         agenda.unresolved.push({ title: event.title, location: event.location, date: event.date });
     }
+    await this.route(places, settings.home);
     return agenda;
   }
 
-  private async personEvents(
-    settings: HouseholdSettings,
-    from: Date,
-    to: Date,
-  ): Promise<PersonEvent[]> {
-    const perCalendar = await Promise.all(
-      settings.people.flatMap((person) =>
-        person.calendars.map(async (ref) =>
-          (await this.calendar.events(ref.accountId, ref.calendarId, from, to))
-            .map((event) => timedEvent(event))
-            .filter((event): event is TimedEvent => event !== undefined)
-            .map((event) => ({ ...event, who: person.id })),
-        ),
+  /** Real driving routes between every place of the week and home, not only to and from home. */
+  private async route(
+    places: Record<string, AgendaPlace>,
+    home: Coordinates | null,
+  ): Promise<void> {
+    const points: Record<string, Coordinates> = Object.fromEntries(
+      Object.entries(places).map(([id, p]) => [id, { lat: p.lat, lon: p.lon }]),
+    );
+    if (home) points[HOME_PLACE] = home;
+    const routes = await this.geo.routes(points);
+    for (const [id, place] of Object.entries(places)) place.routes = routes[id] ?? {};
+  }
+
+  /** Every calendar's events, merged into occurrences with their participants. */
+  private async occurrences(settings: HouseholdSettings, from: Date, to: Date) {
+    const copies = await Promise.all(
+      settings.calendars.map(async (link) =>
+        (await this.calendar.events(link.accountId, link.calendarId, from, to)).map((event) => ({
+          event,
+          people: link.people,
+        })),
       ),
     );
-    return perCalendar.flat();
+    return occurrencesOf(copies.flat());
   }
 
   /** Place id for the planner, or undefined when the address cannot be found. */
@@ -109,12 +125,11 @@ export class HouseholdService {
     const found = await this.geo.geocode(location);
     if (!found) return undefined;
     if (home && isHome(home, found)) return HOME_PLACE;
-    const fromHome = home ? await this.geo.route(home, found) : undefined;
     places[id] = {
       name: location.split(',')[0] ?? location,
       lat: found.lat,
       lon: found.lon,
-      ...(fromHome ? { fromHome } : {}),
+      routes: {},
     };
     return id;
   }

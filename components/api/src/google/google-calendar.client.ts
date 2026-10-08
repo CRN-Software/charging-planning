@@ -23,6 +23,8 @@ const calendarListSchema = z.object({
 const momentSchema = z.object({ dateTime: z.string().optional(), date: z.string().optional() });
 export const googleEventSchema = z.object({
   id: z.string(),
+  /** Shared by every copy of the event in the attendees' calendars (and by a series' instances). */
+  iCalUID: z.string().optional(),
   status: z.string().optional(),
   summary: z.string().optional(),
   location: z.string().optional(),

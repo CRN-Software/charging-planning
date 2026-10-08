@@ -1139,3 +1139,155 @@ button.b.danger {
 .unresolved {
   font-size: 0.82rem;
 }
+.login {
+  max-width: 560px;
+  margin: 12vh auto 0;
+  padding: 0 16px;
+  display: grid;
+  gap: 16px;
+  justify-items: start;
+}
+.setup h3 {
+  font-size: 0.95rem;
+  margin-top: 6px;
+}
+.setup-person {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 0.86rem;
+}
+.setup-person input[type='text'] {
+  max-width: 240px;
+}
+.setup-scroll {
+  overflow-x: auto;
+}
+.setup-calendars td:not(:first-child),
+.setup-calendars th:not(:first-child) {
+  text-align: center;
+}
+.tl {
+  display: grid;
+  gap: 10px;
+}
+.tl-scroll {
+  overflow-x: auto;
+}
+.tl-grid {
+  min-width: 720px;
+  display: grid;
+  gap: 6px;
+}
+.tl-axis {
+  position: relative;
+  height: 16px;
+  margin-left: 110px;
+  font-size: 0.7rem;
+  color: var(--muted);
+}
+.tl-axis span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+.tl-row {
+  display: grid;
+  grid-template-columns: 110px 1fr;
+  align-items: center;
+}
+.tl-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-left: 4px solid var(--who);
+  padding-left: 6px;
+}
+.tl-bar {
+  position: relative;
+  height: 26px;
+  background: var(--bg);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.tl-seg {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  font-size: 0.68rem;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.tl-seg em {
+  font-style: normal;
+  padding: 0 4px;
+  line-height: 26px;
+}
+.tl-home {
+  background: var(--charge-soft);
+}
+.tl-away,
+.tl-parked {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--line),
+    var(--line) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+}
+.tl-event {
+  background: color-mix(in srgb, var(--who, var(--muted)) 35%, transparent);
+}
+.tl-trip {
+  background: var(--ink);
+  cursor: pointer;
+}
+.tl-wait {
+  background: var(--warn-soft);
+}
+.tl-charge {
+  background: var(--charge);
+  top: 18px;
+}
+.tl-key::before {
+  content: '';
+  display: inline-block;
+  width: 12px;
+  height: 10px;
+  margin-right: 4px;
+  vertical-align: middle;
+  border-radius: 2px;
+}
+.tl-key.tl-home::before {
+  background: var(--charge-soft);
+}
+.tl-key.tl-event::before {
+  background: color-mix(in srgb, var(--p1) 35%, transparent);
+}
+.tl-key.tl-trip::before {
+  background: var(--ink);
+}
+.tl-key.tl-wait::before {
+  background: var(--warn-soft);
+}
+.tl-key.tl-parked::before {
+  background: var(--line);
+}
+.tl-key.tl-charge::before {
+  background: var(--charge);
+}
+.tl-key {
+  position: static;
+}
+.act.unlocated {
+  opacity: 0.55;
+  border-style: dashed;
+  background: var(--surface);
+  cursor: default;
+}
+.unlocated-row {
+  font-size: 0.8rem;
+  padding: 4px 6px;
+  border: 1px dashed var(--line);
+  border-radius: 6px;
+  color: var(--muted);
+}

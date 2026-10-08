@@ -1,41 +1,55 @@
 <script setup lang="ts">
+import type { UnlocatedEvent } from '@charging/contracts';
 import {
   fmtH,
   pctToKwh,
+  toH,
   type AppliedCharge,
+  type Conflict,
   type Day,
-  type Gap,
-  type Loop,
+  type Link,
   type Plan,
+  type Trip,
 } from '@charging/planner';
 import { useHouseholdStore } from '~/stores/household';
 import { fmtEur } from '~/utils/format';
-import { firstDeparture } from '~/utils/plan';
 
 const props = defineProps<{ plan: Plan; days: readonly Day[]; pending: ReadonlySet<string> }>();
 defineEmits<{ open: [group: string] }>();
 const store = useHouseholdStore();
 
 type Item = { t: number; key: string } & (
-  { loop: Loop } | { charge: AppliedCharge } | { gap: Gap }
+  | { trip: Trip }
+  | { charge: AppliedCharge }
+  | { link: Link }
+  | { conflict: Conflict }
+  | { unlocated: UnlocatedEvent }
 );
 
+/** The day in time order: trips, charges, the states in between, and what does not fit. */
 function itemsOf(d: number): Item[] {
   const { plan } = props;
   return [
-    ...plan.loops
-      .filter((l) => l.d === d)
-      .map((loop) => ({
-        t: firstDeparture(loop),
-        key: `l-${loop.group}-${firstDeparture(loop)}`,
-        loop,
-      })),
+    ...plan.trips
+      .filter((t) => t.d === d)
+      .map((trip) => ({ t: trip.dep, key: `t-${trip.id}`, trip })),
     ...plan.sim.applied
       .filter((c) => c.d === d && c.amount > 0.5)
       .map((charge) => ({ t: charge.t % 24, key: `c-${charge.id}`, charge })),
-    ...plan.gaps.filter((g) => g.d === d).map((gap) => ({ t: gap.from, key: `g-${gap.id}`, gap })),
+    ...plan.links
+      .filter((l) => l.d === d)
+      .map((link) => ({ t: link.from, key: `l-${link.id}`, link })),
+    ...plan.conflicts
+      .filter((c) => c.d === d)
+      .map((conflict, i) => ({ t: conflict.t, key: `x-${i}`, conflict })),
+    ...store.unlocated
+      .filter((u) => u.date === props.days[d]?.iso)
+      .map((unlocated) => ({ t: toH(unlocated.start), key: `u-${unlocated.id}`, unlocated })),
   ].sort((a, b) => a.t - b.t);
 }
+
+const names = (ids: readonly string[]) =>
+  ids.map((p) => store.household.people[p]?.name ?? p).join(', ');
 
 const chargeLine = (c: AppliedCharge) => {
   const kwh = pctToKwh(c.amount, store.settings);
@@ -50,9 +64,9 @@ const chargeLine = (c: AppliedCharge) => {
         <DayHead :plan="plan" :day="day" />
         <template v-for="item in itemsOf(day.d)" :key="item.key">
           <TripCard
-            v-if="'loop' in item"
-            :loop="item.loop"
-            :pending="pending.has(item.loop.group)"
+            v-if="'trip' in item"
+            :trip="item.trip"
+            :pending="pending.has(item.trip.group)"
             @open="(g) => $emit('open', g)"
           />
           <div
@@ -69,10 +83,19 @@ const chargeLine = (c: AppliedCharge) => {
               ><span>{{ chargeLine(item.charge) }}</span></span
             >
           </div>
-          <GapRow v-else :gap="item.gap" />
+          <LinkRow v-else-if="'link' in item" :link="item.link" />
+          <div v-else-if="'unlocated' in item" class="unlocated-row" :title="item.unlocated.title">
+            <span class="t">{{ item.unlocated.start }}</span>
+            {{ item.unlocated.title }}
+            <span class="muted"
+              >· {{ names(item.unlocated.participants) }} ·
+              {{ item.unlocated.reason === 'online' ? 'en visio' : 'sans adresse' }}</span
+            >
+          </div>
+          <div v-else class="unsolved">{{ item.conflict.text }}</div>
         </template>
-        <div v-if="plan.sim.violation?.loop?.d === day.d" class="unsolved">
-          Batterie insuffisante avant « {{ plan.sim.violation.loop.title }} »
+        <div v-if="plan.sim.violation?.trip?.d === day.d" class="unsolved">
+          Batterie insuffisante à {{ fmtH(plan.sim.violation.trip.dep) }}
         </div>
         <div v-if="!itemsOf(day.d).length" class="empty">Rien de prévu</div>
       </div>

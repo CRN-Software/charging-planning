@@ -12,9 +12,10 @@ import {
   yOf,
   type Segment,
   type Slot,
+  type Activity,
   type SlotKind,
 } from '~/utils/calendar';
-import { modeLabel, personColor } from '~/utils/plan';
+import { groupOfEvent, modeLabel, personColor, personName, placeName } from '~/utils/plan';
 
 const props = defineProps<{ plan: Plan; day: Day; startH: number; pending: ReadonlySet<string> }>();
 const emit = defineEmits<{ open: [group: string]; create: [kind: SlotKind, slot: Slot] }>();
@@ -39,7 +40,7 @@ const lanes = computed(() => [
       : [],
   },
 ]);
-const items = computed(() => activities(props.plan, h.value, props.day.d));
+const items = computed(() => activities(props.plan, props.day, store.unlocated));
 const ghost = ref<{ kind: SlotKind; range: [number, number] } | null>(null);
 
 const openSegment = (s: Segment) => {
@@ -80,13 +81,21 @@ function startDrag(e: PointerEvent) {
 
 const activityStyle = (p: (typeof items.value)[number]) => ({
   ...boxStyle(p.start, p.end, 16),
-  '--who': personColor(h.value, p.item.event.who),
+  '--who': personColor(h.value, p.item.event.participants[0]),
   left: `calc(var(--lane) + (100% - var(--lane)) * ${p.col} / ${p.cols})`,
   width: `calc((100% - var(--lane)) / ${p.cols} - 2px)`,
 });
-const describe = (p: (typeof items.value)[number]) => {
-  const e = p.item.event;
-  return `${h.value.people[e.who]?.name ?? e.who} · ${e.title} · ${h.value.places[e.place]?.name ?? e.place} ${e.start}–${e.end}`;
+const who = (a: Activity) => a.event.participants.map((p) => personName(h.value, p)).join(', ');
+const where = (a: Activity) =>
+  a.kind === 'event'
+    ? placeName(h.value, a.event.place)
+    : a.event.reason === 'online'
+      ? 'en visio'
+      : 'sans adresse';
+const describe = (p: (typeof items.value)[number]) =>
+  `${who(p.item)} · ${p.item.event.title} · ${where(p.item)} ${p.item.event.start}–${p.item.event.end}`;
+const open = (a: Activity) => {
+  if (a.kind === 'event') emit('open', groupOfEvent(a.event.id));
 };
 </script>
 
@@ -111,16 +120,22 @@ const describe = (p: (typeof items.value)[number]) => {
     </template>
     <div
       v-for="p in items"
-      :key="p.item.event.id + p.item.event.d"
+      :key="p.item.kind + p.item.event.id"
       class="act"
-      :class="{ suggested: p.item.event.suggested, manual: p.item.event.manual }"
+      :class="{
+        unlocated: p.item.kind === 'unlocated',
+        suggested: p.item.kind === 'event' && p.item.event.suggested,
+        manual: p.item.kind === 'event' && p.item.event.manual,
+      }"
       :style="activityStyle(p)"
       :title="describe(p)"
-      @click="p.item.group && emit('open', p.item.group)"
+      @click="open(p.item)"
     >
-      <i v-if="p.item.group && pending.has(p.item.group)" class="dot-q">?</i>
+      <i v-if="p.item.kind === 'event' && pending.has(groupOfEvent(p.item.event.id))" class="dot-q"
+        >?</i
+      >
       <b>{{ p.item.event.title }}</b>
-      <span>{{ h.people[p.item.event.who]?.name }} · {{ h.places[p.item.event.place]?.name }}</span>
+      <span>{{ who(p.item) }} · {{ where(p.item) }}</span>
     </div>
     <div
       v-if="ghost"

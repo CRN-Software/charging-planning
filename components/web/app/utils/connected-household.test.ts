@@ -1,4 +1,4 @@
-import { buildWeek, DEMO_SETTINGS, HOME, planWeek } from '@charging/planner';
+import { buildWeek, DEFAULT_SETTINGS, HOME, planWeek } from '@charging/planner';
 import type { Agenda, HouseholdSettings } from '@charging/contracts';
 import { describe, expect, it } from 'vitest';
 import { agendaEvents, connectedHousehold, isConfigured } from './connected-household';
@@ -9,25 +9,16 @@ const SETTINGS: HouseholdSettings = {
   homeAddress: '1 rue Exemple',
   home: { lat: 50.6, lon: 3.15 },
   people: [
-    {
-      id: 'claire',
-      name: 'Claire',
-      adult: true,
-      calendars: [{ accountId: ACCOUNT, calendarId: 'c' }],
-    },
-    {
-      id: 'hugo',
-      name: 'Hugo',
-      adult: false,
-      calendars: [{ accountId: ACCOUNT, calendarId: 'h' }],
-    },
+    { id: 'claire', name: 'Claire', driver: true },
+    { id: 'hugo', name: 'Hugo', driver: false },
   ],
+  calendars: [{ accountId: ACCOUNT, calendarId: 'family', people: ['claire', 'hugo'] }],
 };
 const AGENDA: Agenda = {
   events: [
     {
       id: 'claire:1',
-      who: 'claire',
+      participants: ['claire'],
       date: '2026-10-08',
       start: '8:30',
       end: '17:00',
@@ -36,7 +27,7 @@ const AGENDA: Agenda = {
     },
     {
       id: 'hugo:1',
-      who: 'hugo',
+      participants: ['hugo'],
       date: '2026-10-08',
       start: '14:00',
       end: '15:00',
@@ -45,16 +36,24 @@ const AGENDA: Agenda = {
     },
   ],
   places: {
-    'p-office': { name: 'Bureau', lat: 50.62, lon: 3.06, fromHome: { km: 9.4, min: 16 } },
-    'p-pool': { name: 'Piscine', lat: 50.55, lon: 3.2 },
+    'p-office': {
+      name: 'Bureau',
+      lat: 50.62,
+      lon: 3.06,
+      routes: { home: { km: 9.4, min: 16 }, 'p-pool': { km: 12.1, min: 18 } },
+    },
+    'p-pool': { name: 'Piscine', lat: 50.55, lon: 3.2, routes: {} },
   },
+  unlocated: [],
   unresolved: [],
+  ignored: { noLocation: 0, allDay: 0, online: 0, cancelled: 0 },
 };
 
 describe('connected household', () => {
   it('needs a home and at least one calendar', () => {
     expect(isConfigured(null)).toBe(false);
     expect(isConfigured({ ...SETTINGS, home: null })).toBe(false);
+    expect(isConfigured({ ...SETTINGS, calendars: [] })).toBe(false);
     expect(isConfigured(SETTINGS)).toBe(true);
   });
 
@@ -64,6 +63,7 @@ describe('connected household', () => {
     expect(household.driverPreference).toEqual(['claire']);
     expect(household.places[HOME]).toMatchObject({ lat: 50.6, lon: 3.15 });
     expect(household.places['p-office']?.routes?.[HOME]).toEqual({ km: 9.4, min: 16 });
+    expect(household.places['p-office']?.routes?.['p-pool']).toEqual({ km: 12.1, min: 18 });
     expect(household.workplace).toBeUndefined();
   });
 
@@ -76,7 +76,7 @@ describe('connected household', () => {
       startH: week.startH,
       events: week.instantiate(agendaEvents(AGENDA)),
       manualCharges: [],
-      settings: DEMO_SETTINGS,
+      settings: DEFAULT_SETTINGS,
       overrides: {},
       gaps: {},
     });

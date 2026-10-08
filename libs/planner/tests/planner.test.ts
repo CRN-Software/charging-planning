@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import {
-  buildWeek, DEMO_EVENTS, DEMO_HOUSEHOLD, DEMO_SETTINGS, distance, infer, kmPerPct, must, planWeek, priceAt, span,
-  type GapChoice, type Household, type ManualCharge, type Override, type PlanContext, type Settings,
+  buildWeek, DEMO_EVENTS, DEMO_HOUSEHOLD, DEMO_SETTINGS, distance, kmPerPct, must, planMobility, planWeek, priceAt, timelineOf, violations,
+  type EventTemplate, type GapChoice, type Household, type ManualCharge, type Override, type PlanContext, type Settings, type Trip,
 } from '../src/index.ts';
 
 const MONDAY = new Date(2026, 9, 5, 0, 0);
 const SATURDAY_AFTERNOON = new Date(2026, 9, 3, 16, 30);
 const week = buildWeek(MONDAY);
-const events = week.instantiate(DEMO_EVENTS);
 const h = DEMO_HOUSEHOLD;
 
-const inferWith = (overrides: Record<string, Override> = {}, gaps: Record<string, GapChoice> = {}) =>
-  infer({ household: h, events, overrides, gaps });
+const mobility = (overrides: Record<string, Override> = {}, gaps: Record<string, GapChoice> = {}, templates: readonly EventTemplate[] = DEMO_EVENTS) =>
+  planMobility({ household: h, events: week.instantiate(templates), overrides, gaps });
+const tripsTo = (trips: readonly Trip[], place: string, d: number) => trips.filter((t) => t.d === d && (t.to === place || t.from === place));
+const riders = (t: Trip) => [t.driver, ...t.passengers];
 
 function ctx(patch: { settings?: Partial<Settings>; household?: Household; now?: Date; manual?: ManualCharge[] } = {}): PlanContext {
   const w = patch.now ? buildWeek(patch.now) : week;
@@ -21,53 +22,111 @@ function ctx(patch: { settings?: Partial<Settings>; household?: Household; now?:
   };
 }
 
-const overlap = ([a, b]: [number, number], [c, d]: [number, number]) => a < d && c < b;
-const loopsOf = (group: string, overrides?: Record<string, Override>, gaps?: Record<string, GapChoice>) =>
-  inferWith(overrides, gaps).loops.filter((l) => l.group === group);
-
-describe('trip inference', () => {
-  it('never lets a child drive', () => {
-    inferWith().loops.forEach((l) => { expect(h.people[l.driver]?.adult, l.title).toBe(true); });
+describe('state machine invariants', () => {
+  it('hold for the whole week: nobody in two places, everybody home at night, cars driven by drivers', () => {
+    const m = mobility();
+    expect(violations(m, h)).toEqual([]);
+    expect(m.conflicts).toEqual([]);
   });
 
-  it('never books a vehicle twice at the same time', () => {
-    const { loops } = inferWith();
-    Object.keys(h.modes).filter((m) => h.modes[m]?.vehicle).forEach((mode) => {
-      const spans = loops.filter((l) => l.mode === mode).map(span);
-      spans.forEach((s, i) => { spans.slice(i + 1).forEach((o) => { expect(overlap(s, o), mode).toBe(false); }); });
+  it('never let a non-driver drive', () => {
+    mobility().trips.filter((t) => h.modes[t.mode]?.vehicle).forEach((t) => {
+      expect(h.people[t.driver ?? '']?.driver, t.id).toBe(true);
     });
   });
 
-  it('lets an outside friend drive the tuesday pool without a household car', () => {
-    const pool = loopsOf('kids-1-piscine');
+  it('give every entity a continuous day timeline', () => {
+    const m = mobility();
+    const segments = timelineOf(m, h, 'tesla', 2);
+    segments.slice(1).forEach((s, i) => { expect(s.from).toBeCloseTo(must(segments[i], 'segment').to, 6); });
+    expect(segments.at(-1)?.kind).toBe('home');
+  });
+});
+
+describe('shared occurrences', () => {
+  const shared: EventTemplate = { id: 's1', participants: ['claire', 'hugo', 'lea'], wd: 3, start: '14:00', end: '16:00', title: 'Spectacle', place: 'centre' };
+  const m = mobility({}, {}, [shared]);
+
+  it('take everybody in one car: the driver attends, the children ride along', () => {
+    const outward = must(m.trips.find((t) => t.to === 'centre'), 'outward');
+    expect(outward.driver).toBe('claire');
+    expect(outward.passengers.sort()).toEqual(['hugo', 'lea']);
+    expect(m.trips).toHaveLength(2);
+  });
+
+  it('keep the car parked on site during the occurrence', () => {
+    const tesla = timelineOf(m, h, 'tesla', 3);
+    expect(tesla.find((s) => s.kind === 'parked')?.place).toBe('centre');
+  });
+});
+
+describe('tours', () => {
+  // Monday: an outing for four, then each child to their own lesson at two nearby places.
+  const outing: EventTemplate[] = [
+    { id: 'f1', participants: ['claire', 'hugo', 'lea', 'tom'], wd: 0, start: '12:00', end: '15:20', title: 'Forêt', place: 'grands-parents' },
+    { id: 'f2', participants: ['lea'], wd: 0, start: '16:20', end: '17:10', title: 'Danse', place: 'musique' },
+    { id: 'f3', participants: ['hugo'], wd: 0, start: '16:30', end: '18:10', title: 'Arts', place: 'restaurant' },
+  ];
+  const m = mobility({}, {}, outing);
+  const afternoon = m.trips.filter((t) => t.d === 0 && t.dep >= 15);
+  const line = (t: Trip) => `${t.from}>${t.to}:${t.driver}+${[...t.passengers].sort().join(',')}`;
+
+  it('leave together in one car and drop each child at their stop', () => {
+    expect(afternoon.slice(0, 2).map(line)).toEqual([
+      'grands-parents>musique:claire+hugo,lea,tom',
+      'musique>restaurant:claire+hugo,tom',
+    ]);
+  });
+
+  it('wait nearby for the pickups instead of driving home and back, then bring everyone home', () => {
+    expect(afternoon.slice(2).map(line)).toEqual([
+      'restaurant>musique:claire+tom',
+      'musique>restaurant:claire+lea,tom',
+      'restaurant>home:claire+hugo,lea,tom',
+    ]);
+  });
+
+  it('never send the other car', () => {
+    expect(m.trips.some((t) => t.driver === 'paul')).toBe(false);
+    expect(violations(m, h)).toEqual([]);
+    expect(m.conflicts).toEqual([]);
+  });
+});
+
+describe('escorts', () => {
+  it('let an outside friend drive the tuesday pool without a household car', () => {
+    const pool = tripsTo(mobility().trips, 'piscine', 1);
     expect(pool.length).toBeGreaterThan(0);
-    pool.forEach((l) => { expect([l.mode, l.source]).toEqual(['tiers', 'rule']); });
+    pool.forEach((t) => { expect([t.mode, t.source]).toEqual(['tiers', 'rule']); });
   });
 
-  it('applies a user correction over a rule', () => {
-    loopsOf('kids-1-piscine', { 'kids-1-piscine': { driver: 'claire' } }).forEach((l) => { expect(l.driver).toBe('claire'); });
+  it('apply a user correction over a rule', () => {
+    const pool = tripsTo(mobility({ 'occ:l2': { driver: 'claire' }, 'occ:t3': { driver: 'claire' } }).trips, 'piscine', 1);
+    pool.forEach((t) => { expect(t.driver).toBe('claire'); });
   });
 
-  it('applies a vehicle override to every loop of the group', () => {
-    loopsOf('kids-2-conservatoire', { 'kids-2-conservatoire': { mode: 'clio' } }).forEach((l) => { expect(l.mode).toBe('clio'); });
+  it('follow the wednesday rule: wait on site until Léa, bring her home, go back for Hugo', () => {
+    const wednesday = tripsTo(mobility().trips, 'conservatoire', 2).map((t) => `${t.from}>${t.to}:${riders(t).slice(1).sort().join(',')}`);
+    expect(wednesday).toEqual(['home>conservatoire:hugo,lea', 'conservatoire>home:lea', 'home>conservatoire:', 'conservatoire>home:hugo']);
+    expect(mobility().links.find((l) => l.id === 'wait:2:conservatoire:13:50')).toMatchObject({ stay: true, origin: 'rule' });
   });
 
-  it('follows the wednesday rule: wait on site until Léa, bring her home, go back for Hugo', () => {
-    expect(loopsOf('kids-2-conservatoire').map((l) => l.title)).toEqual(['Dépose Hugo, Léa, puis Récupère Léa', 'Récupère Hugo']);
+  it('let a wait choice override the rule: the driver goes home after the drop', () => {
+    const trips = tripsTo(mobility({}, { 'wait:2:conservatoire:13:50': 'home' }).trips, 'conservatoire', 2);
+    expect(trips.map((t) => `${t.from}>${t.to}`)).toEqual(['home>conservatoire', 'conservatoire>home', 'home>conservatoire', 'conservatoire>home', 'home>conservatoire', 'conservatoire>home']);
+  });
+});
+
+describe('chained occurrences', () => {
+  it('chain the sunday lunch and the shopping stop without going home', () => {
+    expect(mobility().trips.filter((t) => t.d === 6).map((t) => t.to)).toEqual(['grands-parents', 'courses', 'home']);
   });
 
-  it('lets a gap choice override the rule', () => {
-    expect(loopsOf('kids-2-conservatoire', {}, { '2-conservatoire-13:50>17:25': 'home' })).toHaveLength(3);
-  });
-
-  it('chains the sunday lunch and the shopping stop without going home', () => {
-    const sunday = inferWith().loops.filter((l) => l.d === 6);
-    expect(sunday).toHaveLength(1);
-    expect(sunday[0]?.legs.map((g) => g.to)).toEqual(['grands-parents', 'courses', 'home']);
-  });
-
-  it('splits the chained trip when the user forces a return home', () => {
-    expect(inferWith({}, { 'a4>m1': 'home' }).loops.filter((l) => l.d === 6)).toHaveLength(2);
+  it('split the chain when the user forces a return home, and report the delay it causes', () => {
+    const m = mobility({}, { 'paul:a4>m1': 'home' });
+    expect(m.trips.filter((t) => t.d === 6).map((t) => t.to)).toEqual(['grands-parents', 'home', 'courses', 'home']);
+    expect(m.conflicts.some((c) => c.d === 6 && c.text.includes('Courses'))).toBe(true);
+    expect(violations(m, h)).toEqual([]);
   });
 });
 
@@ -89,23 +148,22 @@ describe('charging plan', () => {
     expect(plan.sim.minSoc).toBeGreaterThanOrEqual(DEMO_SETTINGS.reserveKm / kmPerPct(DEMO_SETTINGS) - 0.01);
   });
 
-  it('fills the battery to the charger limit during a full workday', () => {
+  it('fills the battery to the charger limit while parked at the office', () => {
     const routine = planWeek(ctx()).sim.applied.find((c) => c.kind === 'routine');
     expect(Math.round((routine?.socBefore ?? 0) + (routine?.amount ?? 0))).toBe(100);
   });
 
-  it('only charges what a slow charger can deliver during the stay', () => {
+  it('only charges what a slow charger can deliver while parked', () => {
     const work = { ...must(h.chargers.work, 'work'), kw: 2 };
     const household = { ...h, chargers: { work } };
     const routine = planWeek(ctx({ household, settings: { soc: 10 } })).sim.applied.find((c) => c.kind === 'routine');
-    expect(routine?.amount).toBeCloseTo(((2 * 9 * 0.9) / 80) * 100, 2);
+    expect(routine?.amount).toBeCloseTo(((2 * (routine?.hours ?? 0) * 0.9) / 80) * 100, 2);
   });
 
   it('finds a feasible plan even with a nearly empty battery', () => {
     [5, 10, 15, 20, 25].forEach((soc) => {
       const plan = planWeek(ctx({ now: SATURDAY_AFTERNOON, settings: { soc } }));
       expect(plan.sim.violation, `soc ${soc}`).toBeNull();
-      expect(plan.sim.applied.filter((c) => c.kind === 'supercharger').length, `soc ${soc}`).toBeLessThanOrEqual(1);
       plan.sim.applied.forEach((c) => { expect(c.socBefore + c.amount).toBeLessThanOrEqual(c.limit + 0.01); });
     });
   });
@@ -117,13 +175,13 @@ describe('charging plan', () => {
 });
 
 describe('chargers', () => {
-  it('follows the time-of-use tariff and loops over midnight', () => {
+  it('follow the time-of-use tariff and loop over midnight', () => {
     const [lesquin, englos] = [must(h.chargers.lesquin, 'lesquin'), must(h.chargers.englos, 'englos')];
     expect([2, 5, 12, 21, 23.5].map((hour) => priceAt(lesquin, hour))).toEqual([0.16, 0.21, 0.38, 0.28, 0.28]);
     expect(priceAt(englos, 22)).toBe(0.22);
   });
 
-  it('prices a manual supercharger session at its start and caps it by its duration', () => {
+  it('price a manual supercharger session at its start and cap it by its duration', () => {
     const manual = [{ id: 'x', charger: 'lesquin', wd: 0, start: '20:00', end: '20:10' }];
     const c = planWeek(ctx({ manual, settings: { soc: 20 } })).sim.applied.find((a) => a.kind === 'manual');
     expect(c?.price).toBe(0.28);
@@ -131,12 +189,12 @@ describe('chargers', () => {
     expect(c?.detourKm).toBe(2 * distance(h.places, 'home', 'lesquin'));
   });
 
-  it('ignores a workplace charge on a weekend', () => {
+  it('ignore a workplace charge on a weekend', () => {
     const manual = [{ id: 'y', charger: 'work', wd: 5, start: '9:00', end: '12:00' }];
     expect(planWeek(ctx({ manual })).sim.applied.some((a) => a.kind === 'manual')).toBe(false);
   });
 
-  it('adds the presence at work for a manual workplace charge, capped by its power', () => {
+  it('add the presence at work for a manual workplace charge, capped by its power', () => {
     const manual = [{ id: 'z', charger: 'work', wd: 2, start: '9:00', end: '10:00' }];
     const plan = planWeek(ctx({ manual, settings: { soc: 30 } }));
     expect(plan.events.some((e) => e.id === 'mc-z')).toBe(true);

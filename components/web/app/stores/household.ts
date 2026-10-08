@@ -1,8 +1,6 @@
 import { defineStore } from 'pinia';
 import {
-  DEMO_EVENTS,
-  DEMO_HOUSEHOLD,
-  DEMO_SETTINGS,
+  DEFAULT_SETTINGS,
   type Charger,
   type EventTemplate,
   type GapChoice,
@@ -10,15 +8,14 @@ import {
   type ManualCharge,
   type ModeId,
   type Override,
-  type Place,
   type Settings,
   type Tariff,
 } from '@charging/planner';
-import type { Agenda, HouseholdSettings } from '@charging/contracts';
+import type { Agenda, HouseholdSettings, UnlocatedEvent } from '@charging/contracts';
 import { agendaEvents, connectedHousehold, isConfigured } from '~/utils/connected-household';
 
 const STORAGE_KEY = 'charging-planning.v3';
-/** Demo and each household keep their own corrections: their places and people differ. */
+/** Each household keeps its own corrections: their places and people differ. */
 let storageKey = STORAGE_KEY;
 
 /** What the API knows about a signed-in household: never saved in the browser. */
@@ -27,7 +24,7 @@ export interface Remote {
   agenda: Agenda | null;
 }
 
-export type View = 'calendar' | 'list';
+export type View = 'calendar' | 'list' | 'timeline';
 export type ChargerPatch = Partial<Pick<Charger, 'kw' | 'price' | 'limit'>> & {
   tariffs?: Tariff[];
 };
@@ -38,8 +35,6 @@ export interface UserState {
   overrides: Record<string, Override>;
   gaps: Record<string, GapChoice>;
   extraEvents: EventTemplate[];
-  placeKm: Record<string, number>;
-  customPlaces: Record<string, Place>;
   chargers: Record<string, ChargerPatch>;
   manualCharges: ManualCharge[];
   accepted: string[];
@@ -48,12 +43,10 @@ export interface UserState {
 }
 
 const initialState = (): UserState => ({
-  settings: { ...DEMO_SETTINGS },
+  settings: { ...DEFAULT_SETTINGS },
   overrides: {},
   gaps: {},
   extraEvents: [],
-  placeKm: {},
-  customPlaces: {},
   chargers: {},
   manualCharges: [],
   accepted: [],
@@ -69,16 +62,6 @@ function readSaved(): Partial<UserState> {
   }
 }
 
-function mergePlaces(base: Household, state: UserState): Record<string, Place> {
-  const all = { ...base.places, ...state.customPlaces };
-  return Object.fromEntries(
-    Object.entries(all).map(([id, p]) => {
-      const km = state.placeKm[id];
-      return [id, km === undefined ? p : { ...p, km }];
-    }),
-  );
-}
-
 const mergeChargers = (base: Household, state: UserState): Record<string, Charger> =>
   Object.fromEntries(
     Object.entries(base.chargers).map(([id, c]) => [id, { ...c, ...state.chargers[id] }]),
@@ -91,22 +74,36 @@ const connectedRemote = (state: UserState) => {
     : null;
 };
 
+/** Before the household is loaded and configured: nothing to plan. */
+const EMPTY_HOUSEHOLD: Household = connectedHousehold(
+  { homeAddress: null, home: { lat: 0, lon: 0 }, people: [], calendars: [] },
+  {
+    events: [],
+    places: {},
+    unlocated: [],
+    unresolved: [],
+    ignored: { noLocation: 0, allDay: 0, online: 0, cancelled: 0 },
+  },
+);
+
 const baseHousehold = (state: UserState): Household => {
   const remote = connectedRemote(state);
-  return remote ? connectedHousehold(remote.settings, remote.agenda) : DEMO_HOUSEHOLD;
+  return remote ? connectedHousehold(remote.settings, remote.agenda) : EMPTY_HOUSEHOLD;
 };
 
 export const useHouseholdStore = defineStore('household', {
   state: initialState,
   getters: {
     connected: (state): boolean => connectedRemote(state) !== null,
+    /** Timed events without an address: shown so a forgotten one shows up, never planned. */
+    unlocated: (state): UnlocatedEvent[] => state.remote?.agenda?.unlocated ?? [],
     household: (state): Household => {
       const base = baseHousehold(state);
-      return { ...base, places: mergePlaces(base, state), chargers: mergeChargers(base, state) };
+      return { ...base, chargers: mergeChargers(base, state) };
     },
     events: (state): EventTemplate[] => {
       const remote = connectedRemote(state);
-      return [...(remote ? agendaEvents(remote.agenda) : DEMO_EVENTS), ...state.extraEvents];
+      return remote ? [...agendaEvents(remote.agenda), ...state.extraEvents] : [];
     },
   },
   actions: {
@@ -114,7 +111,7 @@ export const useHouseholdStore = defineStore('household', {
     hydrate(householdId?: string) {
       storageKey = householdId ? `${STORAGE_KEY}.${householdId}` : STORAGE_KEY;
       const { remote: _ignored, ...saved } = readSaved();
-      this.$patch({ ...saved, settings: { ...DEMO_SETTINGS, ...saved.settings } });
+      this.$patch({ ...saved, settings: { ...DEFAULT_SETTINGS, ...saved.settings } });
       this.$subscribe((_mutation, state) => {
         const { remote: _remote, ...corrections } = state;
         try {
@@ -149,9 +146,8 @@ export const useHouseholdStore = defineStore('household', {
     toggleGap(id: string, stay: boolean) {
       this.gaps = { ...this.gaps, [id]: stay ? 'home' : 'stay' };
     },
-    addEvent(event: EventTemplate, newPlace?: [string, Place]) {
+    addEvent(event: EventTemplate) {
       this.extraEvents = [...this.extraEvents, event];
-      if (newPlace) this.customPlaces = { ...this.customPlaces, [newPlace[0]]: newPlace[1] };
     },
     removeEvent(id: string) {
       this.extraEvents = this.extraEvents.filter((e) => e.id !== id);
@@ -169,9 +165,6 @@ export const useHouseholdStore = defineStore('household', {
     },
     patchCharger(id: string, patch: ChargerPatch) {
       this.chargers = { ...this.chargers, [id]: { ...this.chargers[id], ...patch } };
-    },
-    setPlaceKm(id: string, km: number) {
-      this.placeKm = { ...this.placeKm, [id]: km };
     },
     setView(view: View) {
       this.view = view;

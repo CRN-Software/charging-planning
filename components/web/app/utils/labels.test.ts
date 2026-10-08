@@ -1,43 +1,45 @@
 import { describe, expect, it } from 'vitest';
-import type { Gap } from '@charging/planner';
-import { gapAutoLabel, gapText } from './labels';
+import { DEMO_HOUSEHOLD, type Link } from '@charging/planner';
+import { linkAutoLabel, linkText } from './labels';
 import { fmtRate, timeValue } from './format';
 
-const gap = (patch: Partial<Gap>): Gap => ({
-  id: 'g',
-  kind: 'escort',
+const link = (patch: Partial<Link>): Link => ({
+  id: 'l',
+  kind: 'wait',
+  person: 'claire',
   d: 2,
+  place: 'conservatoire',
   stay: true,
   origin: 'auto',
   from: 13.5,
   to: 17.25,
-  subject: 'Conservatoire',
   label: 'x',
   ...patch,
 });
 
 describe('labels', () => {
-  it('describes a wait on site and offers going home instead', () => {
-    expect(gapText(gap({ origin: 'rule' }))).toEqual({
-      text: 'Attente à Conservatoire',
+  it('describe a wait on site and offer going home instead', () => {
+    expect(linkText(link({ origin: 'rule' }), DEMO_HOUSEHOLD)).toEqual({
+      icon: '⏸',
+      text: 'Claire attend à Conservatoire',
       action: 'Rentrer ?',
       origin: ' · règle',
     });
   });
 
-  it('describes an adult going home between two stops', () => {
-    expect(gapText(gap({ kind: 'self', stay: false, subject: 'Paul' })).text).toBe(
+  it('describe a driver going home between two stops', () => {
+    expect(linkText(link({ kind: 'self', stay: false, person: 'paul' }), DEMO_HOUSEHOLD).text).toBe(
       'Paul repasse à la maison',
     );
   });
 
-  it('names what the automatic choice currently does', () => {
-    expect(gapAutoLabel(gap({ stay: false }))).toBe(
+  it('name what the automatic choice currently does', () => {
+    expect(linkAutoLabel(link({ stay: false }))).toBe(
       'Automatique : rentrer à la maison entre les deux',
     );
   });
 
-  it('formats prices and time inputs the French way', () => {
+  it('format prices and time inputs the French way', () => {
     expect(fmtRate(0.16)).toBe('0,16 €/kWh');
     expect(timeValue(8.5)).toBe('08:30');
   });

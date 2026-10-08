@@ -11,7 +11,8 @@ import {
   type ChargingContext,
   type Opportunity,
 } from './charging.ts';
-import { infer, type Inference, type Loop } from './inference.ts';
+import type { Trip } from './dispatch.ts';
+import { planMobility, type Mobility } from './mobility.ts';
 import { abs } from './time.ts';
 import { WINDOW_END_T } from './week.ts';
 import type { GapChoice, ManualCharge, Override, PlannedEvent, Settings } from './types.ts';
@@ -31,7 +32,7 @@ export interface PlanContext extends ChargingContext {
 export interface Violation {
   t: number;
   need: number;
-  loop?: Loop;
+  trip?: Trip;
 }
 export interface SocPoint {
   t: number;
@@ -61,7 +62,7 @@ export interface Chosen {
   reason: Violation;
 }
 
-export interface Plan extends Inference {
+export interface Plan extends Mobility {
   events: PlannedEvent[];
   opportunities: Opportunity[];
   chosen: Chosen[];
@@ -74,18 +75,21 @@ export interface Plan extends Inference {
 }
 
 type Step =
-  | { t: number; end: number; km: number; loop: Loop }
+  | { t: number; end: number; km: number; trip: Trip }
   | { t: number; charge: Opportunity & { amount?: number; reason?: Violation } };
 
-function steps(tracked: readonly Loop[], charges: readonly Step[], startH: number): Step[] {
-  const drives = tracked.flatMap((l) =>
-    l.legs.map((g): Step => ({ t: abs(l.d, g.dep), end: abs(l.d, g.arr), km: g.km, loop: l })),
-  );
+function steps(tracked: readonly Trip[], charges: readonly Step[], startH: number): Step[] {
+  const drives = tracked.map((trip): Step => ({
+    t: abs(trip.d, trip.dep),
+    end: abs(trip.d, trip.arr),
+    km: trip.km,
+    trip,
+  }));
   return [...drives, ...charges].filter((s) => s.t >= startH).sort((a, b) => a.t - b.t);
 }
 
 function simulate(
-  tracked: readonly Loop[],
+  tracked: readonly Trip[],
   charges: readonly Step[],
   s: Settings,
   startH: number,
@@ -99,7 +103,7 @@ function simulate(
       soc -= step.km / kmPerPct(s);
       points.push({ t: step.end, soc });
       if (!violation && soc < reservePct(s) - 0.01)
-        violation = { t: step.t, need: reservePct(s) - soc, loop: step.loop };
+        violation = { t: step.t, need: reservePct(s) - soc, trip: step.trip };
       continue;
     }
     const c = step.charge;
@@ -120,12 +124,12 @@ function simulate(
   return { points, applied, violation, endSoc: soc, minSoc: Math.min(...points.map((p) => p.soc)) };
 }
 
-function costs(ctx: PlanContext, loops: readonly Loop[], sim: Simulation) {
+function costs(ctx: PlanContext, trips: readonly Trip[], sim: Simulation) {
   const s = ctx.settings;
   const chargeEur = sim.applied.reduce((sum, c) => sum + pctToKwh(c.amount, s) * c.price, 0);
   const hassle = sim.applied.reduce((sum, c) => sum + c.hassle, 0);
   const other = ctx.household.autoModes.filter((m) => m !== ctx.household.trackedMode);
-  const otherCarKm = loops.filter((l) => other.includes(l.mode)).reduce((sum, l) => sum + l.km, 0);
+  const otherCarKm = trips.filter((t) => other.includes(t.mode)).reduce((sum, t) => sum + t.km, 0);
   const otherCarEur = otherCarKm * ctx.household.costs.otherCarEurPerKm;
   const energyEur = pctToKwh(s.soc - sim.endSoc, s) * ctx.household.costs.energyValueEurPerKwh;
   const score =
@@ -133,15 +137,16 @@ function costs(ctx: PlanContext, loops: readonly Loop[], sim: Simulation) {
   return { chargeEur, otherCarKm, otherCarEur, weekEur: chargeEur + otherCarEur, score };
 }
 
-const inferCache = new WeakMap<PlanContext, Map<string, Inference>>();
+const mobilityCache = new WeakMap<PlanContext, Map<string, Mobility>>();
 
-function inferFor(
+/** Mobility only changes when a suggested charge adds a presence (a workday at the office). */
+function mobilityFor(
   ctx: PlanContext,
   events: readonly PlannedEvent[],
   chosen: readonly Chosen[],
-): Inference {
-  const cache = inferCache.get(ctx) ?? new Map<string, Inference>();
-  inferCache.set(ctx, cache);
+): Mobility {
+  const cache = mobilityCache.get(ctx) ?? new Map<string, Mobility>();
+  mobilityCache.set(ctx, cache);
   const key = chosen
     .filter((c) => c.event)
     .map((c) => c.id)
@@ -149,7 +154,7 @@ function inferFor(
     .join();
   const hit =
     cache.get(key) ??
-    infer({ household: ctx.household, events, overrides: ctx.overrides, gaps: ctx.gaps });
+    planMobility({ household: ctx.household, events, overrides: ctx.overrides, gaps: ctx.gaps });
   cache.set(key, hit);
   return hit;
 }
@@ -157,14 +162,14 @@ function inferFor(
 function opportunitiesFor(
   ctx: PlanContext,
   events: readonly PlannedEvent[],
-  tracked: readonly Loop[],
+  mobility: Mobility,
   replaced: ReadonlySet<string>,
 ) {
-  const onsite = onsiteOpportunities(ctx, tracked);
+  const onsite = onsiteOpportunities(ctx, mobility);
   return [
     ...onsite,
     ...workdayOpportunities(ctx, events, new Set(onsite.map((o) => o.id))),
-    ...superchargerOpportunities(ctx, tracked),
+    ...superchargerOpportunities(ctx, mobility),
   ].filter((o) => o.t >= ctx.startH && !replaced.has(o.id));
 }
 
@@ -180,9 +185,9 @@ export function evaluate(ctx: PlanContext, chosen: readonly Chosen[]): Plan {
     ...presenceEvents(ctx, ctx.events, manual),
     ...chosen.flatMap((c) => (c.event ? [c.event] : [])),
   ];
-  const inference = inferFor(ctx, events, chosen);
-  const tracked = inference.loops.filter((l) => l.mode === ctx.household.trackedMode);
-  const opportunities = opportunitiesFor(ctx, events, tracked, replaced);
+  const mobility = mobilityFor(ctx, events, chosen);
+  const tracked = mobility.trips.filter((t) => t.mode === ctx.household.trackedMode);
+  const opportunities = opportunitiesFor(ctx, events, mobility, replaced);
   const picked = new Map(chosen.map((c) => [c.id, c]));
   const charges: Step[] = [
     ...manual.filter((m) => m.t >= ctx.startH).map((charge) => ({ t: charge.t, charge })),
@@ -202,12 +207,12 @@ export function evaluate(ctx: PlanContext, chosen: readonly Chosen[]): Plan {
   ];
   const sim = simulate(tracked, charges, ctx.settings, ctx.startH);
   return {
-    ...inference,
+    ...mobility,
     events,
     opportunities,
     chosen: [...chosen],
     sim,
-    ...costs(ctx, inference.loops, sim),
+    ...costs(ctx, mobility.trips, sim),
   };
 }
 

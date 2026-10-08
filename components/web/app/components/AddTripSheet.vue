@@ -5,7 +5,6 @@ import type { Slot } from '~/utils/calendar';
 import { timeValue } from '~/utils/format';
 
 const DEFAULT_SLOT: Slot = { d: 1, start: 15.75, end: 16.5 };
-const DEFAULT_NEW_PLACE_KM = 10;
 
 const props = defineProps<{ days: readonly Day[]; initial?: Slot | undefined }>();
 const emit = defineEmits<{ close: [] }>();
@@ -23,17 +22,14 @@ const form = reactive({
   start: timeValue(slot.start),
   end: timeValue(slot.end),
   title: '',
-  place: '',
-  newName: '',
-  km: DEFAULT_NEW_PLACE_KM,
+  place: known.value[0]?.[0] ?? '',
 });
 const error = ref('');
 
 function validate(): string {
   if (!form.start || !form.end || toH(form.end) <= toH(form.start))
     return "L'heure de départ doit suivre l'heure d'arrivée.";
-  if (!form.place && !form.newName.trim())
-    return 'Choisissez un lieu ou donnez un nom au nouveau lieu.';
+  if (!form.place) return 'Choisissez un lieu.';
   return '';
 }
 
@@ -41,22 +37,18 @@ function save() {
   error.value = validate();
   if (error.value) return;
   const id = `m-${Date.now()}`;
-  const place = form.place || `custom-${id}`;
   const wd = props.days[form.d]?.wd ?? 0;
   const event = {
     id,
-    who: form.who,
+    participants: [form.who],
     wd,
     start: form.start,
     end: form.end,
     title: form.title.trim() || 'Arrêt',
-    place,
+    place: form.place,
     manual: true,
   };
-  store.addEvent(
-    event,
-    form.place ? undefined : [place, { name: form.newName.trim(), km: form.km }],
-  );
+  store.addEvent(event);
   emit('close');
 }
 </script>
@@ -96,17 +88,11 @@ function save() {
     <label for="a-place"
       >Lieu
       <select id="a-place" v-model="form.place">
-        <option value="">Nouveau lieu…</option>
         <option v-for="[id, p] in known" :key="id" :value="id">{{ p.name }}</option>
       </select>
     </label>
-    <div v-if="!form.place" class="two">
-      <label for="a-new"
-        >Nouveau lieu<input id="a-new" v-model="form.newName" type="text" placeholder="Nom"
-      /></label>
-      <label for="a-km"
-        >km du domicile<input id="a-km" v-model.number="form.km" type="number" min="0"
-      /></label>
-    </div>
+    <p class="hint">
+      Un nouveau lieu s'ajoute avec son adresse dans Google Agenda : son trajet est alors calculé.
+    </p>
   </AppModal>
 </template>

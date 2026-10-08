@@ -13,7 +13,8 @@ const charges = computed(() =>
 );
 const kwh = (c: AppliedCharge) => pctToKwh(c.amount, store.settings);
 const line = (c: AppliedCharge) => `${Math.round(kwh(c))} kWh · ${fmtEur(kwh(c) * c.price)}`;
-const why = (c: AppliedCharge) => chargeWhy(c, props.days, store.settings.reserveKm);
+const why = (c: AppliedCharge) =>
+  chargeWhy(c, props.days, store.settings.reserveKm, store.household);
 </script>
 
 <template>

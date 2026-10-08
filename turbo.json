@@ -11,7 +11,17 @@
     "dev": {
       "cache": false,
       "persistent": true,
-      "dependsOn": ["^build"]
+      "dependsOn": ["^build"],
+      "passThroughEnv": [
+        "PUBLIC_BASE_URL",
+        "DATABASE_URL",
+        "GOOGLE_CLIENT_ID",
+        "GOOGLE_CLIENT_SECRET",
+        "TESLA_CLIENT_ID",
+        "TESLA_CLIENT_SECRET",
+        "TOKEN_ENCRYPTION_KEY",
+        "LOG_LEVEL"
+      ]
     },
     "lint": {
       "dependsOn": ["^build"]
@@ -21,7 +31,8 @@
     },
     "test": {
       "dependsOn": ["^build"],
-      "outputs": ["coverage/**"]
+      "outputs": ["coverage/**"],
+      "passThroughEnv": ["DATABASE_URL"]
     },
     "clean": {
       "cache": false

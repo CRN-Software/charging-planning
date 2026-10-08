@@ -1,10 +1,15 @@
-import type { Calendar, HouseholdSettings, HouseholdSetup } from '@charging/contracts';
+import type {
+  Calendar,
+  CalendarLink,
+  HouseholdPerson,
+  HouseholdSettings,
+  HouseholdSetup,
+} from '@charging/contracts';
 
+/** A calendar of the household's accounts and the people its events involve (none: unused). */
 export interface CalendarRow {
   calendar: Calendar;
-  use: boolean;
-  name: string;
-  adult: boolean;
+  people: string[];
 }
 
 /** "Léa Martin" → "lea-martin". */
@@ -17,38 +22,49 @@ export const slug = (name: string): string =>
     .replace(/^-|-$/g, '')
     .slice(0, 40) || 'personne';
 
-const sameCalendar = (a: { accountId: string; calendarId: string }, b: Calendar) =>
+const sameCalendar = (a: Pick<CalendarLink, 'accountId' | 'calendarId'>, b: Calendar) =>
   a.accountId === b.accountId && a.calendarId === b.calendarId;
 
-/** A row per calendar, prefilled from the saved setup (or the account's name for its main calendar). */
+/** The saved people, or the signed-in person to start with. */
+export const initialPeople = (settings: HouseholdSettings, myName: string): HouseholdPerson[] =>
+  settings.people.length ? settings.people : [{ id: slug(myName), name: myName, driver: true }];
+
+/** A row per readable calendar; the main calendar of a new household starts with its owner. */
 export function calendarRows(
   calendars: Calendar[],
   settings: HouseholdSettings,
-  myName: string,
+  people: HouseholdPerson[],
 ): CalendarRow[] {
   return calendars.map((calendar) => {
-    const person = settings.people.find((p) => p.calendars.some((c) => sameCalendar(c, calendar)));
-    return {
-      calendar,
-      use: person !== undefined,
-      name: person?.name ?? (calendar.primary ? myName : calendar.name),
-      adult: person?.adult ?? calendar.primary,
-    };
+    const link = settings.calendars.find((c) => sameCalendar(c, calendar));
+    const owner = settings.calendars.length === 0 && calendar.primary ? people[0] : undefined;
+    return { calendar, people: link ? [...link.people] : owner ? [owner.id] : [] };
   });
 }
 
-/** Calendars given the same name belong to the same person. */
-export function toSetup(address: string, rows: CalendarRow[]): HouseholdSetup {
-  const people = new Map<string, HouseholdSetup['people'][number]>();
-  for (const row of rows.filter((r) => r.use && r.name.trim())) {
-    const id = slug(row.name);
-    const person = people.get(id) ?? { id, name: row.name.trim(), adult: row.adult, calendars: [] };
-    person.calendars.push({
-      accountId: row.calendar.accountId,
-      calendarId: row.calendar.calendarId,
-    });
-    person.adult ||= row.adult;
-    people.set(id, person);
-  }
-  return { homeAddress: address.trim() || null, people: [...people.values()] };
+/** A new person with a unique id. */
+export function addPerson(people: HouseholdPerson[], name: string): HouseholdPerson[] {
+  const base = slug(name);
+  let id = base;
+  for (let i = 2; people.some((p) => p.id === id); i++) id = `${base}-${i}`;
+  return [...people, { id, name: name.trim(), driver: false }];
+}
+
+export function toSetup(
+  address: string,
+  people: HouseholdPerson[],
+  rows: CalendarRow[],
+): HouseholdSetup {
+  const known = new Set(people.map((p) => p.id));
+  return {
+    homeAddress: address.trim() || null,
+    people,
+    calendars: rows
+      .map((r) => ({
+        accountId: r.calendar.accountId,
+        calendarId: r.calendar.calendarId,
+        people: r.people.filter((p) => known.has(p)),
+      }))
+      .filter((c) => c.people.length > 0),
+  };
 }

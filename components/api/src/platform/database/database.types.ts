@@ -1,4 +1,4 @@
-import type { Generated } from 'kysely';
+import type { ColumnType, Generated } from 'kysely';
 
 export interface SchemaMigrationTable {
   name: string;
@@ -21,11 +21,14 @@ export interface GeocodeCacheTable {
   created_at: Generated<Date>;
 }
 
+/** `numeric` columns are read back as strings by node-postgres. */
+type Coordinate = ColumnType<string, number, never>;
+
 export interface RouteCacheTable {
-  from_lat: number;
-  from_lon: number;
-  to_lat: number;
-  to_lon: number;
+  from_lat: Coordinate;
+  from_lon: Coordinate;
+  to_lat: Coordinate;
+  to_lon: Coordinate;
   km: number;
   min: number;
   created_at: Generated<Date>;

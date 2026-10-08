@@ -16,6 +16,11 @@ export const base = tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
+      // `const { dropped: _dropped, ...rest } = value` is the idiomatic way to omit a property.
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { ignoreRestSiblings: true, varsIgnorePattern: '^_', argsIgnorePattern: '^_' },
+      ],
       '@typescript-eslint/consistent-type-imports': ['error', { prefer: 'type-imports' }],
       '@typescript-eslint/explicit-module-boundary-types': 'off',
       '@typescript-eslint/restrict-template-expressions': ['error', { allowNumber: true }],

@@ -38,6 +38,14 @@ const other = computed(() =>
           >
             Liste
           </button>
+          <button
+            class="b"
+            :class="{ sel: store.view === 'timeline' }"
+            type="button"
+            @click="store.setView('timeline')"
+          >
+            Chronologie
+          </button>
         </div>
         <button class="b primary" type="button" @click="$emit('add')">
           Ajouter un déplacement
@@ -66,13 +74,19 @@ const other = computed(() =>
         @create="(k, s) => $emit('create', k, s)"
       />
     </div>
-    <div v-else class="view">
+    <div v-else-if="store.view === 'list'" class="view">
       <div class="legend">
         <span class="key key-tesla">{{ ev }} : consomme la batterie</span>
         <span class="key key-other">Autre moyen</span>
-        <span class="key key-guess">Accompagnateur supposé</span>
+        <span class="key key-guess">Conducteur supposé</span>
       </div>
       <WeekList :plan="plan" :days="week.days" :pending="pending" @open="(g) => $emit('open', g)" />
+    </div>
+    <div v-else class="view">
+      <p class="hint">
+        Qui est où, et avec quoi, heure par heure : une ligne par personne et par véhicule.
+      </p>
+      <ResourceTimeline :plan="plan" :days="week.days" @open="(g) => $emit('open', g)" />
     </div>
   </section>
 </template>

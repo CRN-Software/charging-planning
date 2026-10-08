@@ -45,9 +45,39 @@
 
 Le web relaie `/api` vers l'API sans suivre les redirections (`server/middleware/api-proxy.ts`) : les redirections OAuth arrivent au navigateur.
 
-## 4. Flux de planification
+## 4. Moteur : une machine d'état de ressources
 
-1. Les événements de la fenêtre (aujourd'hui + 6 jours) sont placés par jour (`buildWeek`).
-2. `infer` reconstruit les allers-retours depuis le domicile : enchaînements, attentes sur place, dépôts/récupérations des enfants, accompagnateur, véhicule (sans double réservation).
-3. `planWeek` simule la batterie trajet par trajet et, à chaque passage sous la réserve (km jusqu'à la borne la plus proche), ajoute ou complète la recharge la moins chère : borne du travail, superchargeur selon sa grille horaire, journée au travail.
-4. Les corrections de l'utilisateur (accompagnateur, véhicule, attendre/rentrer, recharges manuelles) sont des données d'entrée du moteur.
+**DÉCIDÉ** Le moteur simule la journée comme une machine d'état. Les **entités** sont les personnes (conductrices ou non) et les véhicules du foyer. Les **occurrences** de l'agenda imposent la présence de leurs participants à un lieu pendant un créneau. Les **trajets** déplacent un groupe {véhicule, conducteur, passagers} d'un lieu à un autre ; une **recharge** est un événement du véhicule sur une borne.
+
+### Invariants
+
+1. Une entité n'est jamais réservée deux fois en même temps (événement, trajet, attente, stationnement).
+2. Une entité part toujours de l'endroit où elle se trouve ; tout le monde part de la maison et y rentre le soir.
+3. Un véhicule du foyer est toujours conduit par une personne conductrice ; les autres voyagent comme passagers.
+4. La batterie ne descend jamais sous la réserve.
+
+`violations()` (`libs/planner/src/timeline.ts`) vérifie les trois premiers indépendamment de la construction ; la simulation de batterie vérifie le quatrième.
+
+### Données
+
+- **Personnes** : nom, conducteur ou non. **Agendas** : chacun lié à une ou plusieurs personnes (un agenda « Famille » à tout le foyer, un agenda « Enfants » aux enfants).
+- **Occurrence** : un événement de l'agenda, une seule fois quel que soit le nombre d'agendas où il apparaît (invitations, agendas partagés) ; ses **participants** sont l'union des personnes de ces agendas.
+- L'affichage montre les occurrences réelles ; seul le moteur raisonne en présences et en trajets.
+
+### Planification
+
+**DÉCIDÉ** Les déplacements se planifient **jour par jour** (tout le monde dort à la maison) et **indépendamment de la batterie** : l'énergie ne change pas les trajets. La recharge vient ensuite, sur la semaine, à partir de la consommation de chaque jour.
+
+1. **Présences** (`presences.ts`) : les occurrences de chaque participant ; deux occurrences proches au même lieu n'en font qu'une. Entre deux présences d'une personne, un **lien** : enchaîner ou repasser par la maison (automatique selon le temps disponible, règle du foyer ou correction).
+2. **Déplacements** (`journeys.ts`) : les mouvements nécessaires de chaque personne (maison → présence, présence → présence, présence → maison), regroupés quand les mêmes personnes vont du même lieu au même lieu à la même heure (± 15 min).
+3. **Dispatch** (`dispatch.ts`, `choices.ts`) : dans l'ordre du temps, chaque déplacement reçoit un conducteur et un véhicule _libres et présents au bon endroit_ d'après le registre (`ledger.ts`) :
+   - correction de l'utilisateur, sinon un conducteur qui voyage de toute façon (il emmène les autres : la voiture reste stationnée sur place pendant l'occurrence), sinon une règle du foyer (un ami), sinon un conducteur libre qui vient les chercher ;
+   - après une dépose, l'accompagnateur attend sur place si la récupération arrive plus tôt qu'un aller-retour à la maison (lien « attente », corrigeable), sinon il rentre ;
+   - un départ attend que tout le groupe soit libre ; un retard de plus de 10 minutes, une occurrence manquée, une absence de conducteur ou de voiture deviennent des **incohérences** affichées.
+4. **Recharge** (`charging.ts`, `planner.ts`) : la voiture suivie peut charger quand elle est **stationnée** près d'une borne, ou au superchargeur quand elle est **libre à la maison** ; à chaque passage sous la réserve, le planificateur ajoute ou complète la recharge la moins chère.
+
+### Vues
+
+- **Calendrier** : les occurrences réelles (un bloc avec ses participants) et les couloirs des véhicules (trajets, stationnements, recharges).
+- **Liste** : par jour, les trajets (véhicule, conducteur, passagers), les liens (↩ retour maison, → enchaîne, ⏸ attend) et les incohérences.
+- **Chronologie** : une ligne par personne et par véhicule, l'état heure par heure (maison, événement, trajet, attente, stationnée, en charge).

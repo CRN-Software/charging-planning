@@ -1,6 +1,9 @@
+import type { UnlocatedEvent } from '@charging/contracts';
 import {
   fmtH,
+  timelineOf,
   toH,
+  type Day,
   type Household,
   type ModeId,
   type Plan,
@@ -100,34 +103,39 @@ export interface Segment {
 }
 
 const placeName = (h: Household, id: string) => h.places[id]?.name ?? id;
+const personName = (h: Household, id: string | null) =>
+  (id ? h.people[id]?.name : undefined) ?? '?';
 
+/** A vehicle's day from the state machine: driving, or parked away from home. */
 export function vehicleSegments(plan: Plan, h: Household, mode: ModeId, d: number): Segment[] {
-  return plan.loops
-    .filter((l) => l.mode === mode && l.d === d)
-    .flatMap((l) =>
-      l.legs.flatMap((g, i): Segment[] => {
-        const drive: Segment = {
+  return timelineOf(plan, h, mode, d).flatMap((s): Segment[] => {
+    if (s.kind === 'trip' && s.trip) {
+      const t = s.trip;
+      const riders = [personName(h, t.driver), ...t.passengers.map((p) => personName(h, p))].join(
+        ', ',
+      );
+      return [
+        {
           kind: 'drive',
-          start: g.dep,
-          end: g.arr,
-          group: l.group,
-          title: `${l.driverName} · ${placeName(h, g.from)} → ${placeName(h, g.to)} · ${g.km} km`,
-        };
-        const next = l.legs[i + 1];
-        if (!next) return [drive];
-        const place = placeName(h, g.to);
-        const parked: Segment = {
-          kind: 'parked',
-          start: g.arr,
-          end: next.dep,
-          group: l.group,
-          place,
-          title: `Stationnée à ${place} ${fmtH(g.arr)}–${fmtH(next.dep)}`,
-        };
-        if (yOf(next.dep) - yOf(g.arr) > MIN_LABEL_PX) parked.label = place;
-        return [drive, parked];
-      }),
-    );
+          start: s.from,
+          end: s.to,
+          group: t.group,
+          title: `${riders} · ${placeName(h, t.from)} → ${placeName(h, t.to)} · ${Math.round(t.km)} km`,
+        },
+      ];
+    }
+    if (s.kind !== 'parked' && s.kind !== 'away') return [];
+    const place = placeName(h, s.place);
+    const parked: Segment = {
+      kind: 'parked',
+      start: s.from,
+      end: s.to,
+      place,
+      title: `Stationnée à ${place} ${fmtH(s.from)}–${fmtH(s.to)}`,
+    };
+    if (yOf(s.to) - yOf(s.from) > MIN_LABEL_PX) parked.label = place;
+    return [parked];
+  });
 }
 
 export function chargeSegments(plan: Plan, d: number): Segment[] {
@@ -141,26 +149,25 @@ export function chargeSegments(plan: Plan, d: number): Segment[] {
     }));
 }
 
-export function groupOf(plan: Plan, e: PlannedEvent): string | undefined {
-  return plan.loops.find((l) =>
-    l.kind === 'self'
-      ? l.outings.some((o) => o.events.some((x) => x.id === e.id))
-      : l.d === e.d && l.place === e.place && l.kids.includes(e.who),
-  )?.group;
-}
+export type Activity =
+  { kind: 'event'; event: PlannedEvent } | { kind: 'unlocated'; event: UnlocatedEvent };
 
-export interface Activity {
-  event: PlannedEvent;
-  group: string | undefined;
-}
-
-export function activities(plan: Plan, h: Household, d: number): Positioned<Activity>[] {
-  const items = plan.events
-    .filter((e) => e.d === d && h.people[e.who]?.external !== true)
-    .map((event) => ({
-      item: { event, group: groupOf(plan, event) },
-      start: toH(event.start),
-      end: toH(event.end),
-    }));
+/**
+ * One block per occurrence, whatever the number of participants and calendars; events without
+ * an address share the layout, shown apart.
+ */
+export function activities(
+  plan: Plan,
+  day: Day,
+  unlocated: readonly UnlocatedEvent[],
+): Positioned<Activity>[] {
+  const items = [
+    ...plan.events
+      .filter((e) => e.d === day.d)
+      .map((event): Activity => ({ kind: 'event', event })),
+    ...unlocated
+      .filter((u) => u.date === day.iso)
+      .map((event): Activity => ({ kind: 'unlocated', event })),
+  ].map((item) => ({ item, start: toH(item.event.start), end: toH(item.event.end) }));
   return layoutColumns(items);
 }

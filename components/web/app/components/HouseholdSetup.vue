@@ -1,11 +1,19 @@
 <script setup lang="ts">
-import type { Calendar, HouseholdSettings } from '@charging/contracts';
-import { calendarRows, toSetup, type CalendarRow } from '~/utils/household-setup';
+import type { Calendar, HouseholdPerson, HouseholdSettings } from '@charging/contracts';
+import {
+  addPerson,
+  calendarRows,
+  initialPeople,
+  toSetup,
+  type CalendarRow,
+} from '~/utils/household-setup';
 
 const props = defineProps<{ myName: string }>();
 const emit = defineEmits<{ saved: [] }>();
 const address = ref('');
+const people = ref<HouseholdPerson[]>([]);
 const rows = ref<CalendarRow[]>([]);
+const newName = ref('');
 const status = ref<'loading' | 'ready' | 'saving' | 'saved' | 'error'>('loading');
 const message = ref('');
 
@@ -16,7 +24,8 @@ onMounted(async () => {
       $fetch<Calendar[]>('/api/household/calendars'),
     ]);
     address.value = settings.homeAddress ?? '';
-    rows.value = calendarRows(calendars, settings, props.myName);
+    people.value = initialPeople(settings, props.myName);
+    rows.value = calendarRows(calendars, settings, people.value);
     status.value = 'ready';
   } catch {
     status.value = 'error';
@@ -24,10 +33,26 @@ onMounted(async () => {
   }
 });
 
+const add = () => {
+  if (!newName.value.trim()) return;
+  people.value = addPerson(people.value, newName.value);
+  newName.value = '';
+};
+const remove = (id: string) => {
+  people.value = people.value.filter((p) => p.id !== id);
+  rows.value = rows.value.map((r) => ({ ...r, people: r.people.filter((p) => p !== id) }));
+};
+const toggle = (row: CalendarRow, id: string) => {
+  row.people = row.people.includes(id) ? row.people.filter((p) => p !== id) : [...row.people, id];
+};
+
 const save = async () => {
   status.value = 'saving';
   try {
-    await $fetch('/api/household', { method: 'PUT', body: toSetup(address.value, rows.value) });
+    await $fetch('/api/household', {
+      method: 'PUT',
+      body: toSetup(address.value, people.value, rows.value),
+    });
     status.value = 'saved';
     emit('saved');
   } catch {
@@ -41,7 +66,7 @@ const save = async () => {
   <section class="card setup">
     <div class="card-head">
       <h2>Mon foyer</h2>
-      <span class="eyebrow">agendas Google</span>
+      <span class="eyebrow">personnes et agendas</span>
     </div>
     <p v-if="status === 'loading'" class="hint">Lecture de vos agendas…</p>
     <template v-else-if="rows.length">
@@ -49,48 +74,55 @@ const save = async () => {
         Adresse du domicile
         <input id="home-address" v-model="address" type="text" autocomplete="street-address" />
       </label>
-      <table class="setup-calendars">
-        <thead>
-          <tr>
-            <th>Agenda</th>
-            <th>Utiliser</th>
-            <th>Personne</th>
-            <th>Adulte</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in rows" :key="`${row.calendar.accountId}/${row.calendar.calendarId}`">
-            <td>{{ row.calendar.name }}</td>
-            <td>
-              <input
-                v-model="row.use"
-                type="checkbox"
-                :aria-label="`Utiliser ${row.calendar.name}`"
-              />
-            </td>
-            <td>
-              <input
-                v-model="row.name"
-                type="text"
-                :disabled="!row.use"
-                :aria-label="`Personne de ${row.calendar.name}`"
-              />
-            </td>
-            <td>
-              <input
-                v-model="row.adult"
-                type="checkbox"
-                :disabled="!row.use"
-                :aria-label="`${row.name} est adulte`"
-              />
-            </td>
-          </tr>
-        </tbody>
-      </table>
+
+      <h3>Personnes</h3>
+      <div v-for="p in people" :key="p.id" class="setup-person">
+        <input v-model="p.name" type="text" :aria-label="`Nom de ${p.name}`" />
+        <label><input v-model="p.driver" type="checkbox" /> Conducteur</label>
+        <button class="b" type="button" :aria-label="`Retirer ${p.name}`" @click="remove(p.id)">
+          Retirer
+        </button>
+      </div>
+      <form class="setup-person" @submit.prevent="add">
+        <input
+          v-model="newName"
+          type="text"
+          placeholder="Ajouter une personne"
+          aria-label="Nom de la personne"
+        />
+        <button class="b" type="submit">Ajouter</button>
+      </form>
+
+      <h3>Agendas</h3>
       <p class="hint">
-        Un même nom regroupe plusieurs agendas. Seuls les événements avec une adresse deviennent des
-        trajets.
+        Cochez les personnes que les événements de chaque agenda concernent : un agenda « Famille »
+        peut concerner tout le monde, un agenda « Enfants » seulement les enfants. Un événement
+        présent dans plusieurs agendas reste un seul événement.
       </p>
+      <div class="setup-scroll">
+        <table class="setup-calendars">
+          <thead>
+            <tr>
+              <th>Agenda</th>
+              <th v-for="p in people" :key="p.id">{{ p.name }}</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in rows" :key="`${row.calendar.accountId}/${row.calendar.calendarId}`">
+              <td>{{ row.calendar.name }}</td>
+              <td v-for="p in people" :key="p.id">
+                <input
+                  type="checkbox"
+                  :checked="row.people.includes(p.id)"
+                  :aria-label="`${row.calendar.name} concerne ${p.name}`"
+                  @change="toggle(row, p.id)"
+                />
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="hint">Seuls les événements avec une adresse deviennent des trajets.</p>
       <button class="b primary" type="button" :disabled="status === 'saving'" @click="save">
         Enregistrer
       </button>

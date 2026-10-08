@@ -1,37 +1,49 @@
 <script setup lang="ts">
 import { fmtH, type Day, type GapChoice, type Override, type Plan } from '@charging/planner';
 import { useHouseholdStore } from '~/stores/household';
-import { GAP_CHOICES, gapAutoLabel, SOURCE_LABELS } from '~/utils/labels';
-import { firstDeparture } from '~/utils/plan';
+import { LINK_CHOICES, linkAutoLabel, SOURCE_LABELS } from '~/utils/labels';
+import { crew, modeLabel, personName, placeName } from '~/utils/plan';
 
 const props = defineProps<{ plan: Plan; days: readonly Day[]; group: string }>();
 const emit = defineEmits<{ close: [] }>();
 const store = useHouseholdStore();
 const h = computed(() => store.household);
 
-const loops = computed(() =>
-  props.plan.loops
-    .filter((l) => l.group === props.group)
-    .sort((a, b) => firstDeparture(a) - firstDeparture(b)),
+const trips = computed(() =>
+  props.plan.trips.filter((t) => t.group === props.group).sort((a, b) => a.dep - b.dep),
 );
-const first = computed(() => loops.value[0]);
-const legs = computed(() => loops.value.flatMap((l) => l.legs));
-const why = computed(() => [...new Set(loops.value.flatMap((l) => l.why))].join(' '));
+const occurrences = computed(() => {
+  const ids = new Set(trips.value.flatMap((t) => t.occurrences));
+  ids.add(props.group.replace(/^occ:/, ''));
+  return props.plan.events.filter((e) => ids.has(e.id));
+});
+const first = computed(() => trips.value[0]);
+const title = computed(() => occurrences.value.map((e) => e.title).join(' + ') || 'Trajet');
+const participants = computed(() =>
+  [...new Set(occurrences.value.flatMap((e) => e.participants))]
+    .map((p) => personName(h.value, p))
+    .join(', '),
+);
+const why = computed(() => [...new Set(trips.value.flatMap((t) => t.why))].join(' '));
+const conflicts = computed(() => props.plan.conflicts.filter((c) => c.group === props.group));
+/** The stays and waits around this outing: its people, its day, its place. */
 const related = computed(() => {
-  const l = first.value;
-  if (!l) return [];
-  return props.plan.gaps.filter(
-    (g) => g.d === l.d && (l.kind === 'self' ? g.who === l.who : g.place === l.place),
+  const t = first.value;
+  if (!t) return [];
+  const people = new Set(trips.value.flatMap((x) => [x.driver, ...x.passengers]));
+  const places = new Set(trips.value.flatMap((x) => [x.from, x.to]));
+  return props.plan.links.filter(
+    (l) => l.d === t.d && (people.has(l.person) || (l.place !== undefined && places.has(l.place))),
   );
 });
-const manual = computed(() => loops.value.flatMap((l) => l.manualEvents).filter((e) => !e.charge));
-const adults = computed(() => Object.entries(h.value.people).filter(([, p]) => p.adult));
+const manual = computed(() => occurrences.value.filter((e) => e.manual && !e.charge));
+const drivers = computed(() => Object.entries(h.value.people).filter(([, p]) => p.driver));
 
 const current = store.overrides[props.group] ?? {};
 const driver = ref(current.driver ?? '');
 const mode = ref(current.mode ?? '');
-const gapChoices = ref<Record<string, GapChoice | ''>>(
-  Object.fromEntries(related.value.map((g) => [g.id, store.gaps[g.id] ?? ''])),
+const choices = ref<Record<string, GapChoice | ''>>(
+  Object.fromEntries(related.value.map((l) => [l.id, store.gaps[l.id] ?? ''])),
 );
 
 function save() {
@@ -40,7 +52,7 @@ function save() {
     ...(mode.value && { mode: mode.value }),
   };
   store.setOverride(props.group, patch);
-  store.setGaps(gapChoices.value);
+  store.setGaps(choices.value);
   emit('close');
 }
 const removeStop = (id: string) => {
@@ -51,37 +63,38 @@ const removeStop = (id: string) => {
 
 <template>
   <AppModal
-    v-if="first"
-    :eyebrow="`${days[first.d]?.label ?? ''} · ${SOURCE_LABELS[first.source]}`"
-    :title="first.groupTitle"
+    :eyebrow="`${days[first?.d ?? occurrences[0]?.d ?? 0]?.label ?? ''}${first ? ` · ${SOURCE_LABELS[first.source]}` : ''}`"
+    :title="title"
     @close="emit('close')"
     @save="save"
   >
+    <p v-if="participants" class="hint">Participants : {{ participants }}</p>
     <ul class="legs">
-      <li v-for="(g, i) in legs" :key="i">
-        <span class="num">{{ fmtH(g.dep) }}</span> {{ h.places[g.from]?.name }} →
-        {{ h.places[g.to]?.name }}
-        <span class="num">{{ g.km }} km</span>
+      <li v-for="t in trips" :key="t.id">
+        <span class="num">{{ fmtH(t.dep) }}</span> {{ placeName(h, t.from) }} →
+        {{ placeName(h, t.to) }} · {{ modeLabel(h, t.mode) }} · {{ crew(h, t) || 'à vide' }}
+        <span class="num">{{ Math.round(t.km) }} km</span>
       </li>
     </ul>
     <div class="why">{{ why }}</div>
+    <p v-for="(c, i) in conflicts" :key="i" class="unsolved">{{ c.text }}</p>
     <fieldset v-if="related.length">
-      <legend>Entre deux arrêts</legend>
-      <label v-for="g in related" :key="g.id" :for="`g-${g.id}`"
-        >{{ g.label }}
-        <select :id="`g-${g.id}`" v-model="gapChoices[g.id]">
-          <option value="">{{ gapAutoLabel(g) }}</option>
-          <option v-for="[value, label] in GAP_CHOICES[g.kind]" :key="value" :value="value">
+      <legend>Entre deux moments</legend>
+      <label v-for="l in related" :key="l.id" :for="`l-${l.id}`"
+        >{{ l.label }}
+        <select :id="`l-${l.id}`" v-model="choices[l.id]">
+          <option value="">{{ linkAutoLabel(l) }}</option>
+          <option v-for="[value, label] in LINK_CHOICES[l.kind]" :key="value" :value="value">
             {{ label }}
           </option>
         </select>
       </label>
     </fieldset>
-    <label v-if="first.kind === 'escort'" for="f-driver"
-      >Accompagnateur
+    <label for="f-driver"
+      >Conducteur
       <select id="f-driver" v-model="driver">
         <option value="">Automatique</option>
-        <option v-for="[id, p] in adults" :key="id" :value="id">{{ p.name }}</option>
+        <option v-for="[id, p] in drivers" :key="id" :value="id">{{ p.name }}</option>
       </select>
     </label>
     <label for="f-mode"

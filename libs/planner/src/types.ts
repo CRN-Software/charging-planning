@@ -7,7 +7,8 @@ export type GapChoice = 'stay' | 'home';
 export interface Person {
   name: string;
   color: string;
-  adult?: boolean;
+  /** Can drive a household vehicle; the others always travel as passengers. */
+  driver?: boolean;
   /** Someone outside the household (friend, car-pool): drives without using a household vehicle. */
   external?: boolean;
 }
@@ -100,10 +101,14 @@ export interface Settings {
   whPerKm: number;
 }
 
-/** A calendar entry recurring on weekday `wd` (0 = Monday) or dated (`date`, YYYY-MM-DD). */
+/**
+ * A calendar occurrence recurring on weekday `wd` (0 = Monday) or dated (`date`, YYYY-MM-DD).
+ * `participants`: every household member attending it (one occurrence, whatever the number of
+ * calendars it appears in).
+ */
 export interface EventTemplate {
   id: string;
-  who: PersonId;
+  participants: readonly PersonId[];
   start: string;
   end: string;
   title: string;

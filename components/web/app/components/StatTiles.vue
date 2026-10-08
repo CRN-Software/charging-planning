@@ -2,7 +2,7 @@
 import { kmPerPct, pctToKwh, reservePct, type Plan } from '@charging/planner';
 import { useHouseholdStore } from '~/stores/household';
 import { fmtEur } from '~/utils/format';
-import { modeLabel, sumKm, trackedLoops } from '~/utils/plan';
+import { modeLabel, sumKm, trackedTrips } from '~/utils/plan';
 
 const props = defineProps<{ plan: Plan; questionsCount: number }>();
 const store = useHouseholdStore();
@@ -18,7 +18,7 @@ const tiles = computed<Tile[]>(() => {
   const { plan } = props;
   const s = store.settings;
   const h = store.household;
-  const tracked = trackedLoops(plan, h);
+  const tracked = trackedTrips(plan, h);
   const charges = plan.sim.applied.filter((c) => c.amount > 0.5);
   const kwh = charges.reduce((sum, c) => sum + pctToKwh(c.amount, s), 0);
   const reserve = reservePct(s);
@@ -48,7 +48,7 @@ const tiles = computed<Tile[]>(() => {
     },
     {
       key: `${other} sur 7 jours`,
-      value: `${plan.otherCarKm} km`,
+      value: `${Math.round(plan.otherCarKm)} km`,
       detail: `≈ ${fmtEur(plan.otherCarEur)} de carburant`,
     },
     {
