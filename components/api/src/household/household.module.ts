@@ -15,5 +15,6 @@ import { HouseholdService } from './household.service';
     GoogleCalendarClient,
     GeoService,
   ],
+  exports: [GeoService],
 })
 export class HouseholdModule {}

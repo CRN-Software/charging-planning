@@ -80,6 +80,8 @@ resource "docker_container" "api" {
     "DATABASE_URL=postgres://${postgresql_role.app.name}:${random_password.db.result}@${local.shared_server}:5432/${postgresql_database.app.name}",
     "GOOGLE_CLIENT_ID=${data.sops_file.secrets.data["google_client_id"]}",
     "GOOGLE_CLIENT_SECRET=${data.sops_file.secrets.data["google_client_secret"]}",
+    "TESLA_CLIENT_ID=${data.sops_file.secrets.data["tesla_client_id"]}",
+    "TESLA_CLIENT_SECRET=${data.sops_file.secrets.data["tesla_client_secret"]}",
     "TOKEN_ENCRYPTION_KEY=${random_bytes.token_key.base64}",
   ]
 

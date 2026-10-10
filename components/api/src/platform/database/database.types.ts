@@ -36,6 +36,22 @@ export interface RouteCacheTable {
   created_at: Generated<Date>;
 }
 
+export interface VehicleLinkTable {
+  household_id: string;
+  linked_by: string;
+  refresh_token: Buffer;
+  vin: string | null;
+  display_name: string | null;
+  /** A VehicleSnapshot (@charging/contracts). */
+  snapshot: unknown;
+  checked_at: Date | null;
+  /** The car slept at the last check. */
+  asleep: Generated<boolean>;
+  /** The last check failed. */
+  broken: Generated<boolean>;
+  updated_at: Generated<Date>;
+}
+
 export interface AccountTable {
   id: Generated<string>;
   household_id: string;
@@ -70,4 +86,5 @@ export interface Database {
   session: SessionTable;
   geocode_cache: GeocodeCacheTable;
   route_cache: RouteCacheTable;
+  vehicle_link: VehicleLinkTable;
 }

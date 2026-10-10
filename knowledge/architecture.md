@@ -26,14 +26,21 @@
 - `google_credential` : jeton de rafraîchissement Google du compte (accès hors ligne en lecture aux agendas), **chiffré** (AES-256-GCM, `TOKEN_ENCRYPTION_KEY`), et droits accordés.
 - `session` : cookie httpOnly `sid` ; seule l'empreinte SHA-256 du jeton est stockée ; 30 jours.
 - `geocode_cache`, `route_cache` : réponses de Nominatim (adresse → coordonnées) et d'OSRM (trajet routier), partagées par tous les foyers ; une adresse n'est jamais cherchée deux fois.
-- À venir : `vehicle_link` (véhicule Tesla, jetons chiffrés), réglages du foyer (véhicules, bornes, règles, corrections) côté serveur.
+- `household.settings.equipment` : véhicules, bornes (géocodées), réserve. `household.planning` : semaine corrigée par le foyer (batterie saisie, conducteurs, attentes, ajouts).
+- `vehicle_link` : la Tesla du foyer ; jeton de rafraîchissement **chiffré**, à usage unique, remplacé à chaque rafraîchissement ; dernières données lues (batterie, limite, position) et date de la dernière vérification.
+
+### Tesla
+
+**DÉCIDÉ** Lecture seule (scopes `vehicle_device_data`, `vehicle_location`), sans jamais réveiller la voiture automatiquement : la liste des véhicules donne leur état, et `vehicle_data` n'est appelé que si la voiture est éveillée (`online`) ; sinon les dernières données sont conservées. Au plus une vérification toutes les 10 minutes par foyer, à l'ouverture de l'application (l'API est facturée à l'appel). Une voiture reliée fait foi pour le niveau de batterie ; la saisie à la main ne sert que sans elle. La position est comparée au lieu où le planning place la voiture et traduite en adresse.
+
+**DÉCIDÉ** Seule exception : le bouton « Actualiser maintenant », à la demande d'un membre du foyer, réveille la voiture si elle dort (`wake_up`, facturé et un peu de batterie), attend qu'elle soit en ligne (45 s au plus) et la lit aussitôt.
 
 ### Agendas
 
 - `GET /api/household/calendars` : agendas Google des comptes du foyer. `PUT /api/household` : domicile (géocodé à l'enregistrement) et personnes, chacune avec ses agendas.
 - `GET /api/household/agenda` : événements des 8 prochains jours, lus en direct (jamais stockés), dans le fuseau du foyer (`Europe/Paris`). Ne deviennent des trajets que les événements confirmés, à heure fixe et avec une adresse (pas les événements sur la journée, sans lieu ou en visio). Une adresse à moins de 200 m du domicile est le domicile ; une adresse introuvable est listée à part (`unresolved`) et l'événement ignoré.
 - Nominatim est appelé au plus une fois par seconde (politique d'usage), avec un `User-Agent` identifiant l'application ; si OSRM ne répond pas, le moteur se replie sur la distance à vol d'oiseau × 1,3.
-- Côté web, un foyer configuré (domicile + au moins un agenda) remplace le foyer de démonstration ; les corrections restent dans le navigateur, séparées par foyer, jusqu'à leur passage côté serveur.
+- Côté web, sans session on ne voit que l'écran de connexion ; les corrections de la semaine sont enregistrées par l'API et partagées par le foyer.
 
 ### Connexion Google
 

@@ -15,7 +15,9 @@ import {
   type HouseholdSettings,
   type Planning,
   type UnlocatedEvent,
+  type VehicleStatus,
 } from '@charging/contracts';
+import { latestBattery, type Battery } from '~/utils/vehicle';
 import {
   agendaEvents,
   batterySettings,
@@ -39,6 +41,7 @@ export type View = 'calendar' | 'list' | 'timeline';
 export interface HouseholdState extends Planning {
   view: View;
   remote: Remote | null;
+  vehicle: VehicleStatus | null;
   planningLoaded: boolean;
 }
 
@@ -46,6 +49,7 @@ const initialState = (): HouseholdState => ({
   ...EMPTY_PLANNING,
   view: 'calendar',
   remote: null,
+  vehicle: null,
   planningLoaded: false,
 });
 
@@ -100,7 +104,10 @@ export const useHouseholdStore = defineStore('household', {
             },
           );
     },
-    settings: (state): Settings => batterySettings(state.remote?.settings ?? null, state.soc),
+    battery: (state): Battery => latestBattery(state, state.vehicle),
+    settings(): Settings {
+      return batterySettings(this.remote?.settings ?? null, this.battery.soc);
+    },
     events: (state): EventTemplate[] => {
       const remote = connectedRemote(state);
       return remote ? [...agendaEvents(remote.agenda), ...state.extraEvents] : [];
@@ -132,12 +139,21 @@ export const useHouseholdStore = defineStore('household', {
     },
     /** The signed-in household's setup, the events of its calendars and its week. */
     async loadRemote() {
-      const [settings, planning] = await Promise.all([
+      const [settings, planning, vehicle] = await Promise.all([
         $fetch<HouseholdSettings>('/api/household'),
         $fetch<Planning>('/api/household/planning'),
+        $fetch<VehicleStatus>('/api/tesla/vehicle').catch(() => null),
       ]);
       const agenda = isConfigured(settings) ? await $fetch<Agenda>('/api/household/agenda') : null;
-      this.$patch({ ...planning, remote: { settings, agenda }, planningLoaded: true });
+      this.$patch({ ...planning, remote: { settings, agenda }, vehicle, planningLoaded: true });
+    },
+    /** Wakes the car if needed and reads it now (explicit request only). */
+    async refreshVehicle() {
+      this.vehicle = await $fetch<VehicleStatus>('/api/tesla/vehicle/refresh', { method: 'POST' });
+    },
+    async unlinkVehicle() {
+      await $fetch('/api/tesla/vehicle', { method: 'DELETE' });
+      this.vehicle = await $fetch<VehicleStatus>('/api/tesla/vehicle');
     },
     async saveEquipment(equipment: Equipment) {
       await $fetch('/api/household/equipment', { method: 'PUT', body: equipment });
