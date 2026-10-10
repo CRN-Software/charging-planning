@@ -7,6 +7,9 @@ const TOKEN_URL = 'https://fleet-auth.prd.vn.cloud.tesla.com/oauth2/v3/token';
 export const TESLA_SCOPES = ['openid', 'offline_access', 'vehicle_device_data', 'vehicle_location'];
 /** Vehicle states in which reading data does not wake the car. */
 const AWAKE = 'online';
+/** A woken car usually answers within 10 to 30 seconds. */
+const WAKE_POLL_MS = 3000;
+const WAKE_ATTEMPTS = 15;
 
 export interface TeslaClient {
   clientId: string;
@@ -100,12 +103,20 @@ export interface VehicleSnapshot {
   charging: string;
   lat: number | null;
   lon: number | null;
+  /** The address at that position, when one was found. */
+  address?: string | null;
   /** When the car reported it (ISO). */
   at: string;
 }
 
-async function fleet(client: TeslaClient, accessToken: string, path: string): Promise<Response> {
+async function fleet(
+  client: TeslaClient,
+  accessToken: string,
+  path: string,
+  method: 'GET' | 'POST' = 'GET',
+): Promise<Response> {
   return fetch(`${client.audience}${path}`, {
+    method,
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 }
@@ -117,6 +128,33 @@ export async function listVehicles(
   const response = await fleet(client, accessToken, '/api/1/vehicles');
   if (!response.ok) throw new Error(`Tesla vehicles failed: HTTP ${response.status}`);
   return vehiclesSchema.parse(await response.json()).response;
+}
+
+const vehicleSchema = z.object({ response: z.object({ state: z.string() }) });
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Wakes the car, only on an explicit request of the household (billed, drains a little
+ * battery), and waits until it is online; returns it unchanged if it does not wake up in time.
+ */
+export async function wakeUp(
+  client: TeslaClient,
+  accessToken: string,
+  vehicle: TeslaVehicle,
+  wait: (ms: number) => Promise<unknown> = pause,
+): Promise<TeslaVehicle> {
+  if (vehicle.state === AWAKE) return vehicle;
+  const path = `/api/1/vehicles/${vehicle.vin}`;
+  const woken = await fleet(client, accessToken, `${path}/wake_up`, 'POST');
+  // A refused wake-up leaves the last reading in place rather than breaking the link.
+  if (!woken.ok) return vehicle;
+  for (let i = 0; i < WAKE_ATTEMPTS; i++) {
+    await wait(WAKE_POLL_MS);
+    const response = await fleet(client, accessToken, path);
+    if (response.ok && vehicleSchema.parse(await response.json()).response.state === AWAKE)
+      return { ...vehicle, state: AWAKE };
+  }
+  return vehicle;
 }
 
 /** Undefined when the car sleeps: it is never woken (no wake_up call, no retry). */

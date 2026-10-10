@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { authorizeUrl, newPendingLink, readVehicle, TESLA_SCOPES } from '@/tesla/tesla-fleet';
+import { authorizeUrl, newPendingLink, readVehicle, TESLA_SCOPES, wakeUp } from '@/tesla/tesla-fleet';
 import type { TeslaClient } from '@/tesla/tesla-fleet';
 
 const CLIENT: TeslaClient = {
@@ -55,5 +55,29 @@ describe('tesla vehicle data', () => {
   it('treats a car falling asleep meanwhile as asleep', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 408 })));
     expect(await readVehicle(CLIENT, 'token', VEHICLE)).toBeUndefined();
+  });
+});
+
+describe('tesla wake up', () => {
+  const state = (s: string) => new Response(JSON.stringify({ response: { state: s } }));
+
+  it('wakes a sleeping car and waits until it is online', async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValueOnce(new Response('{}'))
+      .mockResolvedValueOnce(state('asleep'))
+      .mockResolvedValueOnce(state('online'));
+    vi.stubGlobal('fetch', fetch);
+    const woken = await wakeUp(CLIENT, 'token', { ...VEHICLE, state: 'asleep' }, () => Promise.resolve());
+    expect(woken.state).toBe('online');
+    expect(fetch.mock.calls[0]?.[1]).toMatchObject({ method: 'POST' });
+    expect(String(fetch.mock.calls[0]?.[0])).toContain('/api/1/vehicles/VIN0/wake_up');
+  });
+
+  it('leaves an awake car alone', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    expect(await wakeUp(CLIENT, 'token', VEHICLE)).toBe(VEHICLE);
+    expect(fetch).not.toHaveBeenCalled();
   });
 });

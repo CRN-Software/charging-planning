@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { VehicleStatus } from '@charging/contracts';
+import { GeoService } from '@/places/geo.service';
 import { AppConfig } from '@/platform/config/config.module';
 import { SecretBox } from '@/platform/crypto/secret-box';
 import {
@@ -8,8 +9,9 @@ import {
   newPendingLink,
   readVehicle,
   refreshTokens,
+  wakeUp,
 } from './tesla-fleet';
-import type { PendingLink, TeslaClient } from './tesla-fleet';
+import type { PendingLink, TeslaClient, VehicleSnapshot } from './tesla-fleet';
 import { VehicleLinkRepository } from './vehicle-link.repository';
 import type { VehicleLink } from './vehicle-link.repository';
 
@@ -28,6 +30,7 @@ export class TeslaService {
     config: AppConfig,
     private readonly box: SecretBox,
     private readonly links: VehicleLinkRepository,
+    private readonly geo: GeoService,
   ) {
     const clientId = config.get('TESLA_CLIENT_ID', { infer: true });
     const clientSecret = config.get('TESLA_CLIENT_SECRET', { infer: true });
@@ -79,25 +82,35 @@ export class TeslaService {
     await this.links.unlink(householdId);
   }
 
-  /** The last known state of the car, asked again when the previous check is old enough. */
-  async status(householdId: string, now: Date): Promise<VehicleStatus> {
+  /**
+   * The last known state of the car, asked again when the previous check is old enough; `wake`
+   * (an explicit request of the household) asks now and wakes a sleeping car.
+   */
+  async status(householdId: string, now: Date, wake = false): Promise<VehicleStatus> {
     const link = await this.links.get(householdId);
     if (!this.client || !link) return this.view(link);
     const fresh = link.checkedAt && now.getTime() - link.checkedAt.getTime() < CHECK_INTERVAL_MS;
-    if (fresh) return this.view(link);
-    const running = this.checks.get(householdId) ?? this.check(householdId, link, now);
+    if (fresh && !wake) return this.view(link);
+    const running = this.checks.get(householdId) ?? this.check(householdId, link, now, wake);
     this.checks.set(householdId, running);
     return running.finally(() => this.checks.delete(householdId));
   }
 
-  private async check(householdId: string, link: VehicleLink, now: Date): Promise<VehicleStatus> {
+  private async check(
+    householdId: string,
+    link: VehicleLink,
+    now: Date,
+    wake: boolean,
+  ): Promise<VehicleStatus> {
     const client = this.required();
     try {
       const tokens = await refreshTokens(client, this.box.open(link.refreshToken));
       await this.links.rotate(householdId, this.box.seal(tokens.refresh_token));
       const vehicles = await listVehicles(client, tokens.access_token);
-      const vehicle = vehicles.find((v) => v.vin === link.vin) ?? vehicles[0];
-      const snapshot = vehicle && (await readVehicle(client, tokens.access_token, vehicle));
+      const found = vehicles.find((v) => v.vin === link.vin) ?? vehicles[0];
+      const vehicle = found && wake ? await wakeUp(client, tokens.access_token, found) : found;
+      const read = vehicle && (await readVehicle(client, tokens.access_token, vehicle));
+      const snapshot = read && (await this.located(read));
       await this.links.checked(householdId, now, snapshot);
       return this.view({
         ...link,
@@ -110,6 +123,12 @@ export class TeslaService {
       await this.links.checked(householdId, now, undefined, true);
       return this.view({ ...link, broken: true });
     }
+  }
+
+  private async located(snapshot: VehicleSnapshot): Promise<VehicleSnapshot> {
+    if (snapshot.lat === null || snapshot.lon === null) return snapshot;
+    const address = await this.geo.address({ lat: snapshot.lat, lon: snapshot.lon });
+    return { ...snapshot, address: address ?? null };
   }
 
   private view(link: VehicleLink | undefined): VehicleStatus {

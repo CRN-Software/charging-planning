@@ -147,6 +147,10 @@ export const useHouseholdStore = defineStore('household', {
       const agenda = isConfigured(settings) ? await $fetch<Agenda>('/api/household/agenda') : null;
       this.$patch({ ...planning, remote: { settings, agenda }, vehicle, planningLoaded: true });
     },
+    /** Wakes the car if needed and reads it now (explicit request only). */
+    async refreshVehicle() {
+      this.vehicle = await $fetch<VehicleStatus>('/api/tesla/vehicle/refresh', { method: 'POST' });
+    },
     async unlinkVehicle() {
       await $fetch('/api/tesla/vehicle', { method: 'DELETE' });
       this.vehicle = await $fetch<VehicleStatus>('/api/tesla/vehicle');

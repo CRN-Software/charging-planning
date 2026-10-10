@@ -11,15 +11,15 @@ export interface Battery {
   source: 'car' | 'manual';
 }
 
-/** The latest reading wins: the car's, unless a household member typed a newer one. */
+/** A linked car's reading is authoritative; the level typed by hand only stands in for it. */
 export function latestBattery(
   manual: { soc: number; socAt: string | null },
   status: VehicleStatus | null,
 ): Battery {
-  const car = status?.snapshot;
-  if (car && (!manual.socAt || car.at > manual.socAt))
-    return { soc: car.soc, at: car.at, source: 'car' };
-  return { soc: manual.soc, at: manual.socAt, source: 'manual' };
+  const car = status?.linked ? status.snapshot : null;
+  return car
+    ? { soc: car.soc, at: car.at, source: 'car' }
+    : { soc: manual.soc, at: manual.socAt, source: 'manual' };
 }
 
 export interface Whereabouts {

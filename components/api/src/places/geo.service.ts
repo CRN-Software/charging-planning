@@ -8,6 +8,8 @@ import {
   looksLikeAddress,
   nominatim,
   osrmTable,
+  banReverse,
+  nominatimReverse,
 } from './providers';
 import type { Coordinates, Geocoded, Route } from './providers';
 
@@ -63,6 +65,14 @@ export class GeoService {
       .onConflict((oc) => oc.column('query').doUpdateSet(row))
       .execute();
     return found;
+  }
+
+  /** The address at a position (where the car is), never cached: it moves. */
+  async address(at: Coordinates): Promise<string | undefined> {
+    return (
+      (await this.safely('BAN', () => banReverse(at))) ??
+      (await this.safely('Nominatim', () => this.throttled(() => nominatimReverse(at))))
+    );
   }
 
   /**

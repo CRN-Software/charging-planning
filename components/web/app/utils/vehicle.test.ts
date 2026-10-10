@@ -11,20 +11,14 @@ const car = (at: string) => ({
 });
 
 describe('battery level', () => {
-  it('comes from the car unless someone typed a newer one', () => {
-    expect(latestBattery({ soc: 40, socAt: null }, car('2026-10-08T08:00:00.000Z'))).toMatchObject({
-      soc: 57,
-      source: 'car',
-    });
-    expect(
-      latestBattery(
-        { soc: 40, socAt: '2026-10-08T09:00:00.000Z' },
-        car('2026-10-08T08:00:00.000Z'),
-      ),
-    ).toMatchObject({ soc: 40, source: 'manual' });
-    expect(latestBattery({ soc: 40, socAt: null }, null)).toMatchObject({
-      soc: 40,
+  it('comes from the linked car, and from the level typed by hand only without it', () => {
+    const typedLater = { soc: 91, socAt: '2026-10-08T09:00:00.000Z' };
+    const linked = car('2026-10-08T08:00:00.000Z');
+    expect(latestBattery(typedLater, linked)).toMatchObject({ soc: 57, source: 'car' });
+    expect(latestBattery(typedLater, { ...linked, linked: false })).toMatchObject({
+      soc: 91,
       source: 'manual',
     });
+    expect(latestBattery(typedLater, null)).toMatchObject({ soc: 91, source: 'manual' });
   });
 });

@@ -31,7 +31,9 @@
 
 ### Tesla
 
-**DÉCIDÉ** Lecture seule (scopes `vehicle_device_data`, `vehicle_location`), sans jamais réveiller la voiture : la liste des véhicules donne leur état, et `vehicle_data` n'est appelé que si la voiture est éveillée (`online`) ; sinon les dernières données sont conservées. Au plus une vérification toutes les 10 minutes par foyer, à l'ouverture de l'application (l'API est facturée à l'appel). La lecture la plus récente l'emporte : celle de la voiture, sauf saisie plus récente d'un membre du foyer. La position est comparée au lieu où le planning place la voiture.
+**DÉCIDÉ** Lecture seule (scopes `vehicle_device_data`, `vehicle_location`), sans jamais réveiller la voiture automatiquement : la liste des véhicules donne leur état, et `vehicle_data` n'est appelé que si la voiture est éveillée (`online`) ; sinon les dernières données sont conservées. Au plus une vérification toutes les 10 minutes par foyer, à l'ouverture de l'application (l'API est facturée à l'appel). Une voiture reliée fait foi pour le niveau de batterie ; la saisie à la main ne sert que sans elle. La position est comparée au lieu où le planning place la voiture et traduite en adresse.
+
+**DÉCIDÉ** Seule exception : le bouton « Actualiser maintenant », à la demande d'un membre du foyer, réveille la voiture si elle dort (`wake_up`, facturé et un peu de batterie), attend qu'elle soit en ligne (45 s au plus) et la lit aussitôt.
 
 ### Agendas
 

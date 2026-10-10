@@ -22,42 +22,70 @@ const car = computed(() => store.vehicle?.snapshot ?? null);
 const where = computed(
   () => car.value && whereabouts(props.plan, store.household, props.days, car.value),
 );
-const name = (id: string | null) => (id ? placeName(store.household, id) : 'ailleurs');
+const name = (id: string) => placeName(store.household, id);
+/** A known place by its name, otherwise the address the position was found at. */
+const here = computed(() => {
+  if (where.value?.actual) return name(where.value.actual);
+  return (
+    car.value?.address ?? (car.value?.lat == null ? 'position non communiquée' : 'adresse inconnue')
+  );
+});
+const refreshing = ref(false);
+const refresh = async () => {
+  refreshing.value = true;
+  try {
+    await store.refreshVehicle();
+  } finally {
+    refreshing.value = false;
+  }
+};
 const onSoc = (e: Event) => store.setSoc(Number((e.target as HTMLInputElement).value));
 </script>
 
 <template>
   <section class="card">
     <h2>Batterie {{ modeLabel(store.household, store.household.trackedMode) }}</h2>
-    <label class="setting" for="s-soc">
-      Niveau actuel<span class="num">{{ store.battery.soc }} %</span>
-      <input id="s-soc" type="range" min="5" max="100" :value="store.battery.soc" @input="onSoc" />
-    </label>
-    <p class="hint">
-      <template v-if="store.battery.source === 'car'"
-        >Lu sur la voiture {{ when(store.battery.at) }}.</template
-      >
-      <template v-else-if="store.battery.at">Saisi {{ when(store.battery.at) }}.</template>
-      <template v-else>À relever sur la voiture.</template>
-      Partagé avec tout le foyer.
-    </p>
+    <template v-if="store.battery.source === 'car'">
+      <p class="setting">
+        Niveau actuel<span class="num">{{ store.battery.soc }} %</span>
+      </p>
+      <p class="hint">Lu sur la voiture {{ when(store.battery.at) }}.</p>
+    </template>
+    <template v-else>
+      <label class="setting" for="s-soc">
+        Niveau actuel<span class="num">{{ store.battery.soc }} %</span>
+        <input
+          id="s-soc"
+          type="range"
+          min="5"
+          max="100"
+          :value="store.battery.soc"
+          @input="onSoc"
+        />
+      </label>
+      <p class="hint">
+        {{ store.battery.at ? `Saisi ${when(store.battery.at)}.` : 'À relever sur la voiture.' }}
+        Partagé avec tout le foyer.
+      </p>
+    </template>
 
     <template v-if="store.vehicle?.linked">
-      <p v-if="car" class="hint">
-        Limite de charge {{ car.limit }} %<template v-if="store.vehicle.asleep">
-          · la voiture dort : dernières données conservées, elle n'est jamais réveillée</template
-        >.
+      <p v-if="store.vehicle.asleep" class="hint">
+        La voiture dort : dernières données conservées. « Actualiser maintenant » la réveille.
       </p>
-      <p v-if="where" class="pill" :class="{ warn: !where.matches }">
-        <template v-if="where.matches">À {{ name(where.actual) }}, comme prévu.</template>
-        <template v-else>
-          Signalée {{ name(where.actual) }}, le planning la prévoyait à {{ name(where.expected) }}.
-        </template>
+      <p v-if="car" class="hint">
+        Actuellement : <strong>{{ here }}</strong
+        ><template v-if="where && !where.matches">
+          · le planning la prévoyait à {{ name(where.expected) }}</template
+        >.
       </p>
       <p v-if="store.vehicle.broken" class="pill warn">
         Tesla ne répond plus pour ce compte : reliez la voiture à nouveau.
       </p>
       <div class="equip">
+        <button class="b" type="button" :disabled="refreshing" @click="refresh">
+          {{ refreshing ? 'Réveil de la voiture…' : 'Actualiser maintenant' }}
+        </button>
         <a v-if="store.vehicle.broken" class="b primary" href="/api/tesla/link">Relier à nouveau</a>
         <button class="b" type="button" @click="store.unlinkVehicle()">
           Délier {{ store.vehicle.name ?? 'la voiture' }}

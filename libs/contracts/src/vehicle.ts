@@ -7,6 +7,8 @@ export const vehicleSnapshotSchema = z.object({
   charging: z.string(),
   lat: z.number().nullable(),
   lon: z.number().nullable(),
+  /** The address at that position, when one was found. */
+  address: z.string().nullish(),
   at: z.iso.datetime(),
 });
 

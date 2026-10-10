@@ -4,6 +4,8 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Logger,
+  Post,
   Query,
   Req,
   Res,
@@ -31,6 +33,7 @@ const callbackSchema = z.object({
 @UseGuards(SessionGuard)
 export class TeslaController {
   private readonly baseUrl: string;
+  private readonly logger = new Logger(TeslaController.name);
 
   constructor(
     config: AppConfig,
@@ -61,14 +64,29 @@ export class TeslaController {
     void reply.clearCookie(LINK_COOKIE, { path: '/' });
     if (!pending || !query.code || query.error || query.state !== pending.state)
       return void reply.redirect('/?tesla=echec', HttpStatus.FOUND);
-    const householdId = await this.householdOf(accountId);
-    await this.tesla.completeLink(householdId, accountId, query.code, pending);
+    try {
+      await this.tesla.completeLink(
+        await this.householdOf(accountId),
+        accountId,
+        query.code,
+        pending,
+      );
+    } catch (error) {
+      this.logger.error({ accountId, error: String(error) }, 'tesla link failed');
+      return void reply.redirect('/?tesla=echec', HttpStatus.FOUND);
+    }
     void reply.redirect('/?tesla=ok', HttpStatus.FOUND);
   }
 
   @Get('vehicle')
   async vehicle(@CurrentAccount() accountId: string): Promise<VehicleStatus> {
     return this.tesla.status(await this.householdOf(accountId), new Date());
+  }
+
+  /** Wakes the car if it sleeps and reads it now: only on an explicit request. */
+  @Post('vehicle/refresh')
+  async refresh(@CurrentAccount() accountId: string): Promise<VehicleStatus> {
+    return this.tesla.status(await this.householdOf(accountId), new Date(), true);
   }
 
   @Delete('vehicle')

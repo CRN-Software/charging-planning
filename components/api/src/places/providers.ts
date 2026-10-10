@@ -3,6 +3,8 @@ import { z } from 'zod';
 const NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search';
 /** French national address base (BAN) on IGN's Géoplateforme: tolerant to typos in street names. */
 const BAN_URL = 'https://data.geopf.fr/geocodage/search';
+const BAN_REVERSE_URL = 'https://data.geopf.fr/geocodage/reverse';
+const NOMINATIM_REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse';
 const BAN_MIN_SCORE = 0.5;
 const OSRM_URL = 'https://router.project-osrm.org/route/v1/driving';
 const USER_AGENT = 'charging-planning (https://charging-planning.crn-tech.fr; support@crn-tech.fr)';
@@ -26,6 +28,7 @@ const banSchema = z.object({
     }),
   ),
 });
+const nominatimReverseSchema = z.object({ display_name: z.string().optional() });
 const osrmTableSchema = z.object({
   distances: z.array(z.array(z.number().nullable())),
   durations: z.array(z.array(z.number().nullable())),
@@ -94,6 +97,26 @@ export async function ban(query: string): Promise<Geocoded | undefined> {
   if (!first || first.properties.score < BAN_MIN_SCORE) return undefined;
   const [lon, lat] = first.geometry.coordinates;
   return { lat, lon, label: first.properties.label };
+}
+
+/** The address at a position, from the national address base (France only). */
+export async function banReverse(at: Coordinates): Promise<string | undefined> {
+  const response = await fetch(`${BAN_REVERSE_URL}?limit=1&lat=${at.lat}&lon=${at.lon}`, {
+    headers: { 'User-Agent': USER_AGENT },
+  });
+  if (!response.ok) throw new Error(`BAN: HTTP ${response.status}`);
+  return banSchema.parse(await response.json()).features[0]?.properties.label;
+}
+
+export async function nominatimReverse(at: Coordinates): Promise<string | undefined> {
+  const response = await fetch(
+    `${NOMINATIM_REVERSE_URL}?format=jsonv2&lat=${at.lat}&lon=${at.lon}`,
+    {
+      headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'fr' },
+    },
+  );
+  if (!response.ok) throw new Error(`Nominatim: HTTP ${response.status}`);
+  return nominatimReverseSchema.parse(await response.json()).display_name;
 }
 
 export interface Route {
