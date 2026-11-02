@@ -5,7 +5,7 @@ const failed = computed(() => route.query.connexion === 'echec');
 
 <template>
   <main class="login">
-    <div class="eyebrow">Semaine de charge</div>
+    <div class="eyebrow">Charging Planner</div>
     <h1>Planifiez la recharge de votre voiture électrique à partir des agendas du foyer.</h1>
     <p class="muted">
       Qui se déplace, quand, avec quel véhicule, et où recharger au meilleur prix sans jamais tomber
