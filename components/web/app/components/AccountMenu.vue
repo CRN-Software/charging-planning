@@ -11,7 +11,9 @@ const logout = async () => {
   <div class="account">
     <template v-if="me">
       <span class="pill">{{ me.name }} · {{ me.household.name }}</span>
-      <span v-if="!me.calendarAccess" class="pill warn">Accès aux agendas refusé</span>
+      <a v-if="!me.calendarAccess" class="pill warn" href="/api/auth/google?consent=1"
+        >Reconnecter les agendas</a
+      >
       <button type="button" class="b" @click="logout">Se déconnecter</button>
     </template>
   </div>

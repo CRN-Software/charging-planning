@@ -100,6 +100,7 @@ export const useHouseholdStore = defineStore('household', {
               places: {},
               unlocated: [],
               unresolved: [],
+              expiredAccess: [],
               ignored: { noLocation: 0, allDay: 0, online: 0, cancelled: 0 },
             },
           );

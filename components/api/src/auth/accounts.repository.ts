@@ -85,6 +85,11 @@ export class AccountsRepository {
     return row?.refresh_token;
   }
 
+  /** Forgets a refresh token Google no longer accepts, so the next sign-in asks for consent. */
+  async dropCredential(accountId: string): Promise<void> {
+    await this.db.deleteFrom('google_credential').where('account_id', '=', accountId).execute();
+  }
+
   async householdOf(accountId: string): Promise<string | undefined> {
     const row = await this.db
       .selectFrom('account')

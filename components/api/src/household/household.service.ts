@@ -8,6 +8,7 @@ import type {
   HouseholdSetup,
 } from '@charging/contracts';
 import { AccountsRepository } from '@/auth/accounts.repository';
+import { GoogleAccessExpiredError } from '@/auth/google-oauth';
 import { GoogleCalendarClient } from '@/google/google-calendar.client';
 import { GeoService } from '@/places/geo.service';
 import type { Coordinates } from '@/places/geo.service';
@@ -16,6 +17,21 @@ import type { Occurrence } from './agenda-mapper';
 import { HouseholdRepository } from './household.repository';
 
 const WINDOW_DAYS = 8;
+
+/** The account's result, or undefined (recorded in `expired`) when its Google access expired. */
+const unlessExpired = async <T>(
+  accountId: string,
+  expired: Set<string>,
+  read: () => Promise<T>,
+): Promise<T | undefined> => {
+  try {
+    return await read();
+  } catch (error) {
+    if (!(error instanceof GoogleAccessExpiredError)) throw error;
+    expired.add(accountId);
+    return undefined;
+  }
+};
 
 const toAgendaEvent = (o: Occurrence, place: string): AgendaEvent => ({
   id: o.googleId,
@@ -38,15 +54,19 @@ export class HouseholdService {
 
   async calendars(householdId: string): Promise<Calendar[]> {
     const members = await this.accounts.members(householdId);
+    const expired = new Set<string>();
     const lists = await Promise.all(
-      members.map(async (accountId) =>
-        (await this.calendar.calendars(accountId)).map((c) => ({
+      members.map(async (accountId) => {
+        const calendars = await unlessExpired(accountId, expired, () =>
+          this.calendar.calendars(accountId),
+        );
+        return (calendars ?? []).map((c) => ({
           accountId,
           calendarId: c.id,
           name: c.name,
           primary: c.primary,
-        })),
-      ),
+        }));
+      }),
     );
     return lists.flat();
   }
@@ -70,14 +90,16 @@ export class HouseholdService {
   async agenda(householdId: string, now: Date): Promise<Agenda> {
     const settings = await this.households.settings(householdId);
     const to = new Date(now.getTime() + WINDOW_DAYS * 24 * 3600 * 1000);
-    const { occurrences: events, unlocated, ignored } = await this.occurrences(settings, now, to);
+    const expired = new Set<string>();
+    const { occurrences: events, ...rest } = await this.occurrences(settings, now, to, expired);
     const places: Record<string, AgendaPlace> = {};
     const agenda: Agenda = {
       events: [],
       places,
-      unlocated: unlocated.map(({ googleId, ...rest }) => ({ id: googleId, ...rest })),
+      unlocated: rest.unlocated.map(({ googleId, ...e }) => ({ id: googleId, ...e })),
       unresolved: [],
-      ignored,
+      expiredAccess: await this.identities([...expired]),
+      ignored: rest.ignored,
     };
     for (const event of events) {
       const place = await this.resolve(event.location, settings.home, places);
@@ -103,17 +125,29 @@ export class HouseholdService {
     for (const [id, place] of Object.entries(places)) place.routes = routes[id] ?? {};
   }
 
-  /** Every calendar's events, merged into occurrences with their participants. */
-  private async occurrences(settings: HouseholdSettings, from: Date, to: Date) {
+  /** Every readable calendar's events, merged into occurrences with their participants. */
+  private async occurrences(
+    settings: HouseholdSettings,
+    from: Date,
+    to: Date,
+    expired: Set<string>,
+  ) {
     const copies = await Promise.all(
-      settings.calendars.map(async (link) =>
-        (await this.calendar.events(link.accountId, link.calendarId, from, to)).map((event) => ({
-          event,
-          people: link.people,
-        })),
-      ),
+      settings.calendars.map(async (link) => {
+        const events = await unlessExpired(link.accountId, expired, () =>
+          this.calendar.events(link.accountId, link.calendarId, from, to),
+        );
+        return (events ?? []).map((event) => ({ event, people: link.people }));
+      }),
     );
     return occurrencesOf(copies.flat());
+  }
+
+  private async identities(accountIds: string[]): Promise<Agenda['expiredAccess']> {
+    const accounts = await Promise.all(accountIds.map((id) => this.accounts.find(id)));
+    return accounts
+      .filter((a) => a !== undefined)
+      .map(({ id, name, email }) => ({ accountId: id, name, email }));
   }
 
   /** Place id for the planner, or undefined when the address cannot be found. */
