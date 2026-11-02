@@ -1158,6 +1158,11 @@ button.b.danger {
   gap: 16px;
   justify-items: start;
 }
+.login .lead {
+  margin: 0;
+  font-size: 1.15rem;
+  line-height: 1.4;
+}
 .setup h3 {
   font-size: 0.95rem;
   margin-top: 6px;
