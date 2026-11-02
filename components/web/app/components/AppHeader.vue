@@ -9,7 +9,7 @@ const store = useHouseholdStore();
   <header>
     <div>
       <div class="eyebrow">{{ label }} · {{ vehicle }}</div>
-      <h1>Semaine de charge</h1>
+      <h1>Charging Planner</h1>
     </div>
     <AccountMenu />
     <div class="pills">

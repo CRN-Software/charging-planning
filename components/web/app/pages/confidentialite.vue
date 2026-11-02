@@ -1,13 +1,13 @@
 <script setup lang="ts">
-useHead({ title: 'Confidentialité · Semaine de charge' });
+useHead({ title: 'Confidentialité · Charging Planner' });
 </script>
 
 <template>
   <article class="legal">
-    <NuxtLink to="/">← Semaine de charge</NuxtLink>
+    <NuxtLink to="/">← Charging Planner</NuxtLink>
     <h1>Confidentialité</h1>
     <p>
-      Semaine de charge planifie la recharge d'un véhicule électrique à partir des agendas d'un
+      Charging Planner planifie la recharge d'un véhicule électrique à partir des agendas d'un
       foyer. Cette page décrit les données utilisées, pourquoi, et comment les supprimer.
     </p>
 
