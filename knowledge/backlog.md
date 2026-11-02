@@ -6,6 +6,7 @@
 - Interface Nuxt : écran de connexion seul hors session ; vues calendrier, liste et chronologie par ressource.
 - CI/CD, images GHCR, déploiement par le deployer du serveur (Postgres partagé, site HTTPS).
 - Connexion Google (OIDC + `calendar.readonly` hors ligne), sessions en base, foyer créé à la première connexion, page de confidentialité.
+- Accès Google expiré ou révoqué (`invalid_grant`) : le jeton est oublié, le planning reste affiché sans les agendas de ce compte, et la personne concernée est invitée à se reconnecter (consentement forcé).
 - Agendas réels : domicile, personnes (conducteur ou non), agendas reliés à une ou plusieurs personnes ; une occurrence par événement ; géocodage (BAN, Nominatim) et matrice de trajets (OSRM) en cache.
 - Moteur en machine d'état de ressources : tournées de dépose, attente sur place, ramassages groupés.
 - Liaison Tesla en lecture seule, sans réveil : batterie, limite et position comparée au planning.
@@ -13,6 +14,7 @@
 
 ## Étape 2 — multi-foyers
 
+0. Publier l'écran de consentement OAuth (projet GCP) : en mode « Testing », Google fait expirer les refresh tokens au bout de 7 jours.
 1. Invitations : un second adulte rejoint le foyer et y apporte ses agendas.
 2. Fleet Telemetry (flux sans interrogation) si l'interrogation à la demande coûte trop ; pilotage de la limite de charge (scope `vehicle_charging_cmds`, clé privée déjà prête).
 3. Règles d'accompagnement récurrentes et routines de recharge configurables (aujourd'hui vides pour un foyer connecté).

@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import { AccountsRepository } from '@/auth/accounts.repository';
 import { AuthService } from '@/auth/auth.service';
-import { refreshAccessToken } from '@/auth/google-oauth';
+import { GoogleAccessExpiredError, refreshAccessToken } from '@/auth/google-oauth';
 import { SecretBox } from '@/platform/crypto/secret-box';
 
 const API = 'https://www.googleapis.com/calendar/v3';
@@ -86,9 +86,18 @@ export class GoogleCalendarClient {
     const cached = this.tokens.get(accountId);
     if (cached && cached.expiresAt - TOKEN_MARGIN_MS > Date.now()) return cached.token;
     const sealed = await this.accounts.sealedRefreshToken(accountId);
-    if (!sealed) throw new Error('no Google access for this account');
-    const fresh = await refreshAccessToken(this.auth.google, this.box.open(sealed));
+    if (!sealed) throw new GoogleAccessExpiredError();
+    const fresh = await this.refresh(accountId, sealed);
     this.tokens.set(accountId, fresh);
     return fresh.token;
+  }
+
+  private async refresh(accountId: string, sealed: Buffer) {
+    try {
+      return await refreshAccessToken(this.auth.google, this.box.open(sealed));
+    } catch (error) {
+      if (error instanceof GoogleAccessExpiredError) await this.accounts.dropCredential(accountId);
+      throw error;
+    }
   }
 }

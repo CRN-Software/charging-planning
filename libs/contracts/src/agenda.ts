@@ -37,6 +37,8 @@ export const agendaSchema = z.object({
   unlocated: z.array(unlocatedEventSchema),
   /** Events skipped because their address could not be found. */
   unresolved: z.array(z.object({ title: z.string(), location: z.string(), date: z.iso.date() })),
+  /** Members whose Google access expired: their calendars are missing until they sign in again. */
+  expiredAccess: z.array(z.object({ accountId: z.uuid(), name: z.string(), email: z.email() })),
   /** Events that are not trips, counted by reason. */
   ignored: z.object({
     noLocation: z.number().int(),

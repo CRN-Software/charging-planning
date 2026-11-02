@@ -1,6 +1,12 @@
 import { createHash } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
-import { authorizeUrl, identityFromIdToken, newPendingLogin } from '@/auth/google-oauth';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  authorizeUrl,
+  GoogleAccessExpiredError,
+  identityFromIdToken,
+  newPendingLogin,
+  refreshAccessToken,
+} from '@/auth/google-oauth';
 import { hashToken } from '@/auth/sessions.repository';
 import { SecretBox } from '@/platform/crypto/secret-box';
 
@@ -52,6 +58,27 @@ describe('Google authorization request', () => {
 
   it('forces the consent screen when a refresh token is needed', () => {
     expect(new URL(authorizeUrl(CLIENT, newPendingLogin(), true)).searchParams.get('prompt')).toBe('consent');
+  });
+});
+
+describe('Google token refresh', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const answer = (status: number, body: unknown) =>
+    vi.stubGlobal('fetch', vi.fn(() => Promise.resolve(Response.json(body, { status }))));
+
+  it('tells an expired or revoked refresh token apart, so the person is asked to sign in again', async () => {
+    answer(400, { error: 'invalid_grant', error_description: 'Token has been expired or revoked.' });
+    await expect(refreshAccessToken(CLIENT, 'stale')).rejects.toBeInstanceOf(GoogleAccessExpiredError);
+  });
+
+  it('keeps other failures as plain errors', async () => {
+    answer(400, { error: 'invalid_client' });
+    await expect(refreshAccessToken(CLIENT, 'token')).rejects.not.toBeInstanceOf(GoogleAccessExpiredError);
+  });
+
+  it('returns a fresh access token', async () => {
+    answer(200, { access_token: 'access', expires_in: 3600 });
+    await expect(refreshAccessToken(CLIENT, 'token')).resolves.toMatchObject({ token: 'access' });
   });
 });
 

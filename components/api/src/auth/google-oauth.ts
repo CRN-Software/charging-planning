@@ -112,6 +112,15 @@ export const identityFromIdToken = (
   return claims;
 };
 
+const refreshErrorSchema = z.object({ error: z.string() });
+
+/** The refresh token was revoked or expired: only a new sign-in with consent restores access. */
+export class GoogleAccessExpiredError extends Error {
+  constructor() {
+    super('Google access expired or revoked');
+  }
+}
+
 const refreshResponseSchema = z.object({ access_token: z.string(), expires_in: z.number() });
 
 /** A short-lived access token from the stored refresh token (offline access). */
@@ -129,7 +138,12 @@ export const refreshAccessToken = async (
       grant_type: 'refresh_token',
     }),
   });
-  if (!response.ok) throw new Error(`Google token refresh failed: HTTP ${response.status}`);
+  if (!response.ok) {
+    const body: unknown = await response.json().catch(() => null);
+    if (refreshErrorSchema.safeParse(body).data?.error === 'invalid_grant')
+      throw new GoogleAccessExpiredError();
+    throw new Error(`Google token refresh failed: HTTP ${response.status}`);
+  }
   const { access_token, expires_in } = refreshResponseSchema.parse(await response.json());
   return { token: access_token, expiresAt: Date.now() + expires_in * 1000 };
 };

@@ -10,6 +10,7 @@ onMounted(async () => {
   if (me.value) await store.loadRemote();
 });
 const unresolved = computed(() => store.remote?.agenda?.unresolved ?? []);
+const expiredAccess = computed(() => store.remote?.agenda?.expiredAccess ?? []);
 const { week, plan, baseline, questions, pending } = usePlan();
 const vehicle = computed(() => modeLabel(store.household, store.household.trackedMode));
 
@@ -30,6 +31,7 @@ const onCreate = (kind: SlotKind, slot: Slot) => {
   <LoginScreen v-if="!me" />
   <div v-else class="wrap">
     <AppHeader :label="week?.label ?? ''" :vehicle="vehicle" />
+    <GoogleReconnect :my-id="me.id" :expired="expiredAccess" />
     <HouseholdSetup
       v-if="store.remote && !store.connected"
       :my-name="me.name"
